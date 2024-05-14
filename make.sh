@@ -3,7 +3,7 @@
 set -eo pipefail
 
 cmd:subtrace() {
-  CGO_ENABLED=0 go build -ldflags "-X 'subtrace.dev/cli/config.ControlPlaneURI=https://subtrace.dev'" -o subtrace
+  CGO_ENABLED=0 go build -o subtrace
 }
 
 cmd:debug() {
