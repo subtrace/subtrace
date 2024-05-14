@@ -1,0 +1,426 @@
+// Copyright (c) Subtrace, Inc.
+// SPDX-License-Identifier: BSD-3-Clause
+
+package run
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"runtime/pprof"
+	"strings"
+	"sync/atomic"
+	"syscall"
+	"time"
+	"unsafe"
+
+	"subtrace.dev/cli/cmd/run/engine"
+	"subtrace.dev/cli/cmd/run/engine/process"
+	"subtrace.dev/cli/cmd/run/engine/seccomp"
+	"subtrace.dev/cli/cmd/run/fd"
+	"subtrace.dev/cli/cmd/run/futex"
+	"subtrace.dev/cli/cmd/run/kernel"
+	"subtrace.dev/cli/cmd/run/tls"
+	"subtrace.dev/cli/journal"
+	"subtrace.dev/cli/logging"
+
+	"github.com/peterbourgon/ff/v3/ffcli"
+	"golang.org/x/sys/unix"
+)
+
+type Command struct {
+	ffcli.Command
+	pprof string
+}
+
+func NewCommand() *ffcli.Command {
+	c := new(Command)
+
+	c.Name = "run"
+	c.ShortUsage = "subtrace run [flags] -- <command> [arguments]"
+	c.ShortHelp = "run a command with subtrace"
+
+	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
+	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
+	c.FlagSet.StringVar(&c.pprof, "pprof", "", "enable pprof CPU profiling and write to file")
+	c.UsageFunc = func(fc *ffcli.Command) string {
+		return ffcli.DefaultUsageFunc(fc) + ExtraHelp()
+	}
+
+	c.Exec = c.entrypoint
+	return &c.Command
+}
+
+func ExtraHelp() string {
+	ok := false
+	if len(os.Args) <= 2 {
+		ok = true
+	} else {
+		for _, arg := range os.Args {
+			if arg == "--" {
+				break
+			}
+			if arg == "-h" || arg == "-help" || arg == "--help" {
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok {
+		return ""
+	}
+
+	return strings.Join([]string{
+		"",
+		"EXAMPLES",
+		"  $ subtrace run -- nginx",
+		"  $ subtrace run -- python -m http.server",
+		"  $ subtrace run -- curl https://subtrace.dev",
+		"",
+		"MORE",
+		"  https://subtrace.dev/docs",    // TODO
+		"  https://subtrace.dev/discord", // TODO
+		"",
+	}, "\n")
+}
+
+func (c *Command) entrypoint(ctx context.Context, args []string) error {
+	logging.Init()
+
+	if len(args) == 0 {
+		// Log to stdout so that the usage and help text is greppable (see [1]).
+		// [1] https://news.ycombinator.com/item?id=37682859
+		c.FlagSet.SetOutput(os.Stdout)
+		c.FlagSet.Usage()
+		return nil
+	}
+
+	switch os.Getenv("_SUBTRACE_CHILD") {
+	case "": // parent
+		code, err := c.entrypointParent(ctx, args)
+		switch {
+		case err == nil:
+			slog.Debug("parent exiting", "code", code)
+			os.Exit(code)
+
+		case errors.Is(err, errMissingCommand):
+			if os.Args[len(os.Args)-1] == "--" {
+				fmt.Fprintf(os.Stderr, "subtrace: error: missing COMMAND\n")
+			}
+			os.Exit(1)
+
+		case errors.Is(err, kernel.ErrUnsupportedVersion):
+			major, minor, _ := kernel.CheckVersion(minKernelVersion, false)
+			fmt.Fprintf(os.Stderr, "subtrace: error: unsupported Linux kernel version (got %d.%d, want %s+)\n", major, minor, minKernelVersion)
+			os.Exit(1)
+
+		default:
+			slog.Debug("parent exiting", "code", code, "err", err)
+			return fmt.Errorf("parent: %w", err)
+		}
+
+	default: // child
+		os.Unsetenv("_SUBTRACE_CHILD")
+		if err := c.entrypointChild(ctx, args); err != nil {
+			fmt.Fprintf(os.Stderr, "child: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	panic("unreachable")
+}
+
+// ensureAsyncPreemptionHack checks if GODEBUG=asyncpreemptoff=1 is set. If not
+// found, it restarts the subtrace parent process with the value set.
+//
+// Async preemption is a Go 1.14+ feature that allows the Go runtime scheduler
+// to send a SIGURG signal to preempt goroutines. It's enabled by default and
+// is normally useful because it allows for preempting long running goroutines
+// like tight loops that do not have yield points like function calls.
+//
+// Unfortunately, async preemption seems to mess with our ioctl(2) calls that
+// do SECCOMP_ADDFD_FLAG_SEND: if the Go scheduler preempts an OS thread that's
+// in the middle of a seccomp_unotify(2) ioctl call installling a socket into
+// the target's file descriptor table, due to some unknown bug in either the
+// Linux kernel (likely) or the Go scheduler (unlikely), the atomicity of the
+// operation gets violated. SECCOMP_ADDFD_FLAG_SEND is supposed to atomically
+// install the file into the tracee's file descriptor table, mark the seccomp
+// notification as complete and set the installed file descriptor number as the
+// tracee's syscall return value, but it unexpectedly results in the tracee
+// seeing 0 as the syscall return value and subtrace's ioctl call returning
+// EINTR. Since 0 is a valid file descriptor number, the tracee thinks its
+// socket(2) or accept(2) syscall succeeded and 0 is the new socket file
+// descriptor. But this is wrong and 0 is usually standard input (and not a
+// socket), so subsequent socket operations will fail with ENOTSOCK. Moreover,
+// operating on the wrong file descriptor can be catastrophic.
+//
+// To work around this issue, we use GODEBUG to disable async preemption when
+// initializing the parent process (we reset it back to its original value
+// before executing the tracee so that we don't change its behavior in case
+// it's also a Go program). This ensures that the Go scheduler will never
+// interrupt any syscall with SIGURG.
+//
+// TODO(adtac): bisect the earliest Go and Linux versions this happens in
+// TODO(adtac): does this also happen on linux/amd64? (tested on arm64)
+func (c *Command) ensureAsyncPreemptionHack() error {
+	orig := os.Getenv("GODEBUG")
+
+	var excl []string
+	for _, kv := range strings.Split(orig, ",") {
+		k, v, _ := strings.Cut(kv, "=")
+		if k != "asyncpreemptoff" {
+			excl = append(excl, kv)
+			continue
+		}
+		if v == "1" {
+			slog.Debug("asyncpreemptoff=1 found", "GODEBUG", os.Getenv("GODEBUG"), "SUBTRACE_ORIG_GODEBUG", os.Getenv("SUBTRACE_ORIG_GODEBUG"))
+			switch prev := os.Getenv("SUBTRACE_ORIG_GODEBUG"); prev {
+			case "<empty>":
+				os.Unsetenv("SUBTRACE_ORIG_GODEBUG")
+				os.Unsetenv("GODEBUG")
+			case "":
+			default:
+				os.Unsetenv("SUBTRACE_ORIG_GODEBUG")
+				os.Setenv("GODEBUG", prev)
+			}
+			return nil
+		}
+	}
+
+	slog.Debug("asyncpreemptoff=1 not found, restarting", "GODEBUG", os.Getenv("GODEBUG"))
+	var environ []string
+	for _, kv := range os.Environ() {
+		switch {
+		case strings.HasPrefix(kv, "GODEBUG="):
+			environ = append(environ, "GODEBUG="+strings.Join(append(excl, "asyncpreemptoff=1"), ","))
+		default:
+			environ = append(environ, kv)
+		}
+	}
+
+	if orig != "" {
+		// We don't want to propagate the hack to child processes that might also
+		// be Go programs, so we temporarily store the original value and restore
+		// it after execve.
+		environ = append(environ, "SUBTRACE_ORIG_GODEBUG="+orig)
+	} else {
+		environ = append(environ, "GODEBUG=asyncpreemptoff=1")
+		environ = append(environ, "SUBTRACE_ORIG_GODEBUG=<empty>")
+	}
+	if err := unix.Exec(os.Args[0], os.Args, environ); err != nil {
+		return fmt.Errorf("execve: %w", err)
+	}
+	return nil
+}
+
+var errMissingCommand = fmt.Errorf("missing COMMAND")
+
+const (
+	// required >= 5.0  (2019-03-03) for seccom_unotify(2)
+	// required >= 5.3  (2019-09-15) for pidfd_open(2)
+	// required >= 5.6  (2020-03-29) for pidfd_getfd(2)
+	// required >= 5.9  (2020-10-11) for SECCOMP_IOCTL_NOTIF_ADDFD
+	// required >= 5.14 (2021-08-29) for SECCOMP_ADDFD_FLAG_SEND
+	//          >= 5.19 (2022-07-31) for SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV
+	minKernelVersion = "5.14"
+)
+
+func (c *Command) entrypointParent(ctx context.Context, args []string) (int, error) {
+	if len(args) == 0 {
+		return 0, errMissingCommand
+	}
+
+	if err := c.ensureAsyncPreemptionHack(); err != nil {
+		return 0, fmt.Errorf("ensure asyncpreemptoff=1: %w", err)
+	}
+
+	slog.Debug("starting subtrace parent", "pid", os.Getpid())
+
+	if _, _, err := kernel.CheckVersion(minKernelVersion, true); err != nil {
+		return 0, fmt.Errorf("check kernel version: %w", err)
+	}
+
+	if c.pprof != "" {
+		f, err := os.Create(c.pprof)
+		if err != nil {
+			return 0, fmt.Errorf("create pprof file: %w", err)
+		}
+		defer f.Close()
+
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return 0, fmt.Errorf("start cpu profile: %w", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
+	if err := tls.GenerateEpehemeralCA(); err != nil {
+		return 0, fmt.Errorf("generate TLS ephemeral CA: %w", err)
+	}
+
+	if err := journal.Init(); err != nil {
+		return 0, fmt.Errorf("init journal: %w", err)
+	}
+	defer func() {
+		if err := journal.Default.Flush(); err != nil {
+			slog.Error("failed to flush journal", "err", err)
+		}
+	}()
+
+	go c.runSignalHandler()
+
+	pid, sec, err := c.forkChild()
+	if err != nil {
+		return 0, fmt.Errorf("exec child: %w", err)
+	}
+	if sec == nil {
+		return 127, nil
+	}
+
+	root, err := process.New(pid)
+	if err != nil {
+		return 0, fmt.Errorf("new process: %w", err)
+	}
+
+	eng := engine.New(sec, root)
+	go eng.Start()
+
+	var status unix.WaitStatus
+	if _, err := unix.Wait4(pid, &status, 0, nil); err != nil {
+		return 0, fmt.Errorf("wait4: %w", err)
+	}
+	slog.Debug("root process exited", "status", status.ExitStatus())
+
+	eng.Wait()
+
+	if err := eng.Close(); err != nil {
+		slog.Debug("failed to close engine cleanly", "err", err) // not fatal
+	}
+	return status.ExitStatus(), nil
+}
+
+func (c *Command) runSignalHandler() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, unix.SIGINT, unix.SIGTERM, unix.SIGQUIT)
+	for {
+		var code string
+		switch <-ch {
+		case unix.SIGINT:
+			code = "SIGINT"
+		case unix.SIGTERM:
+			code = "SIGTERM"
+		case unix.SIGQUIT:
+			code = "SIGQUIT"
+		}
+		slog.Debug("received signal", "code", code)
+	}
+}
+
+// forkChild forks and re-executes the subtrace binary to run in child mode. It
+// returns the child PID and the installed seccomp_unotify listener.
+func (c *Command) forkChild() (pid int, sec *seccomp.Listener, err error) {
+	memfd, err := unix.MemfdCreate("subtrace_seccomp_sync", unix.MFD_CLOEXEC)
+	if err != nil {
+		return 0, nil, fmt.Errorf("memfd_create: %w", err)
+	}
+	defer unix.Close(memfd)
+
+	if err := unix.Ftruncate(memfd, 4); err != nil {
+		return 0, nil, fmt.Errorf("ftruncate: %w", err)
+	}
+
+	addr, _, errno := unix.Syscall6(unix.SYS_MMAP, 0, 4, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED, uintptr(memfd), 0)
+	if errno != 0 {
+		return 0, nil, fmt.Errorf("mmap: %w", errno)
+	}
+	defer unix.Syscall6(unix.SYS_MUNMAP, addr, 4, 0, 0, 0, 0)
+	*(*uint32)(unsafe.Pointer(addr)) = 0
+
+	self, err := os.Executable()
+	if err != nil {
+		return 0, nil, fmt.Errorf("get executable: %w", err)
+	}
+	pid, err = syscall.ForkExec(self, os.Args, &syscall.ProcAttr{
+		Env:   append(os.Environ(), "_SUBTRACE_CHILD=true"),
+		Files: []uintptr{0, 1, 2, uintptr(memfd)},
+	})
+	if err != nil {
+		return 0, nil, fmt.Errorf("fork and exec: %w", err)
+	}
+
+	slog.Debug("waiting for child to install seccomp filter")
+	start := time.Now()
+
+	futex.Wait(unsafe.Pointer(addr), 0)
+	wait := time.Since(start)
+
+	secfd := atomic.LoadUint32((*uint32)(unsafe.Pointer(addr)))
+	if secfd == ^uint32(0) {
+		return 0, nil, nil
+	}
+
+	pidfd, err := unix.PidfdOpen(pid, 0)
+	if err != nil {
+		return 0, nil, fmt.Errorf("pidfd_open: %w", err)
+	}
+	defer unix.Close(pidfd)
+
+	ret, err := unix.PidfdGetfd(pidfd, int(secfd), 0)
+	if err != nil {
+		return 0, nil, fmt.Errorf("pidfd_getfd: %w", err)
+	}
+	seccompfd := fd.NewFD(ret)
+	defer seccompfd.DecRef()
+
+	slog.Debug("initialized child", "pid", pid, "seccompfd", ret, slog.Group("took", "wait", wait.Nanoseconds(), "total", time.Since(start).Nanoseconds()))
+	return pid, seccomp.NewFromFD(seccompfd), nil
+}
+
+func (c *Command) entrypointChild(ctx context.Context, args []string) error {
+	addr, _, errno := unix.Syscall6(unix.SYS_MMAP, 0, 4, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED, uintptr(3), 0)
+	if errno != 0 {
+		return fmt.Errorf("mmap shared uint32: %w", errno)
+	}
+
+	abspath, err := exec.LookPath(args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "subtrace: %s: command not found\n", args[0])
+		atomic.StoreUint32((*uint32)(unsafe.Pointer(addr)), ^uint32(0))
+		futex.Wake(unsafe.Pointer(addr), 1)
+		os.Exit(127)
+		return nil
+	}
+
+	var syscalls []int
+	for nr, handler := range process.Handlers {
+		if handler != nil {
+			syscalls = append(syscalls, nr)
+		}
+	}
+
+	fd, err := seccomp.InstallFilter(syscalls)
+	if err != nil {
+		atomic.StoreUint32((*uint32)(unsafe.Pointer(addr)), ^uint32(0))
+		futex.Wake(unsafe.Pointer(addr), 1)
+		return fmt.Errorf("create seccomp listener: %w", err)
+	}
+	slog.Debug("child: installed seccomp filter", "fd", fd)
+
+	atomic.StoreUint32((*uint32)(unsafe.Pointer(addr)), uint32(fd))
+	woke := futex.Wake(unsafe.Pointer(addr), 1)
+	slog.Debug("child: notified parent", "woke", woke)
+
+	unix.Syscall6(unix.SYS_MUNMAP, addr, 4, 0, 0, 0, 0)
+	unix.Close(3)
+	unix.Close(fd)
+
+	slog.Debug("child: calling execve", "argv0", args[0], "abspath", abspath)
+	if err := unix.Exec(abspath, args, os.Environ()); err != nil {
+		return fmt.Errorf("execve: %w", err)
+	}
+	panic("unreachable")
+}
