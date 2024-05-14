@@ -18,7 +18,7 @@ import (
 	"os"
 	"time"
 
-	"subtrace.dev/cli/journal"
+	"subtrace.dev/journal"
 )
 
 var (

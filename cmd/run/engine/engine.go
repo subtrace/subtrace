@@ -13,11 +13,10 @@ import (
 	"strings"
 	"sync"
 
-	"subtrace.dev/cli/cmd/run/engine/process"
-	"subtrace.dev/cli/cmd/run/engine/seccomp"
-	"subtrace.dev/cli/cmd/run/syscalls"
-
 	"golang.org/x/sys/unix"
+	"subtrace.dev/cmd/run/engine/process"
+	"subtrace.dev/cmd/run/engine/seccomp"
+	"subtrace.dev/cmd/run/syscalls"
 )
 
 type Engine struct {

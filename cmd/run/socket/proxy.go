@@ -16,10 +16,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"subtrace.dev/cli/cmd/run/tls"
-	"subtrace.dev/cli/journal"
-
 	"golang.org/x/sys/unix"
+	"subtrace.dev/cmd/run/tls"
+	"subtrace.dev/journal"
 )
 
 type proxy struct {

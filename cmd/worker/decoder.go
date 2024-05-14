@@ -19,14 +19,13 @@ import (
 	"strings"
 	"sync"
 
-	"subtrace.dev/cli/cmd/worker/clickhouse"
-	"subtrace.dev/cli/journal"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/google/uuid"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
+	"subtrace.dev/cmd/worker/clickhouse"
+	"subtrace.dev/journal"
 )
 
 type decoder struct {

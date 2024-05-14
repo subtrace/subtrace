@@ -1,4 +1,4 @@
-module subtrace.dev/cli
+module subtrace.dev
 
 go 1.21.5
 

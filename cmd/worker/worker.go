@@ -15,13 +15,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"subtrace.dev/cli/cmd/worker/clickhouse"
-	"subtrace.dev/cli/journal"
-	"subtrace.dev/cli/logging"
-	"subtrace.dev/cli/rpc"
-
 	"github.com/google/uuid"
 	"github.com/peterbourgon/ff/v3/ffcli"
+	"subtrace.dev/cmd/worker/clickhouse"
+	"subtrace.dev/journal"
+	"subtrace.dev/logging"
+	"subtrace.dev/rpc"
 )
 
 type Command struct {

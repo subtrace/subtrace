@@ -11,10 +11,9 @@ import (
 	"net/netip"
 	"syscall"
 
-	"subtrace.dev/cli/cmd/run/engine/seccomp"
-
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/abi/linux"
+	"subtrace.dev/cmd/run/engine/seccomp"
 )
 
 var arch = binary.LittleEndian

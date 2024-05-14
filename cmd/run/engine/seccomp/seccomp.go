@@ -12,14 +12,13 @@ import (
 	"syscall"
 	"unsafe"
 
-	"subtrace.dev/cli/cmd/run/fd"
-	"subtrace.dev/cli/cmd/run/kernel"
-	"subtrace.dev/cli/cmd/run/syscalls"
-
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/bpf"
 	"gvisor.dev/gvisor/pkg/marshal/primitive"
+	"subtrace.dev/cmd/run/fd"
+	"subtrace.dev/cmd/run/kernel"
+	"subtrace.dev/cmd/run/syscalls"
 )
 
 var ErrCancelled = errors.New("seccomp user notification cancelled")

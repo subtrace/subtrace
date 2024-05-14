@@ -20,12 +20,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"subtrace.dev/cli/rpc"
-
 	"github.com/golang/snappy"
 	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
+	"subtrace.dev/rpc"
 )
 
 var Default *Journal

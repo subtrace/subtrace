@@ -12,13 +12,12 @@ import (
 	"syscall"
 	"unsafe"
 
-	"subtrace.dev/cli/cmd/run/engine/seccomp"
-	"subtrace.dev/cli/cmd/run/fd"
-	"subtrace.dev/cli/cmd/run/socket"
-	"subtrace.dev/cli/cmd/run/tls"
-
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/abi/linux"
+	"subtrace.dev/cmd/run/engine/seccomp"
+	"subtrace.dev/cmd/run/fd"
+	"subtrace.dev/cmd/run/socket"
+	"subtrace.dev/cmd/run/tls"
 )
 
 // handleExit handles the exit(2) syscall.

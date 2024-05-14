@@ -10,11 +10,10 @@ import (
 	"sync"
 	"syscall"
 
-	"subtrace.dev/cli/cmd/run/engine/seccomp"
-	"subtrace.dev/cli/cmd/run/fd"
-	"subtrace.dev/cli/cmd/run/socket"
-
 	"golang.org/x/sys/unix"
+	"subtrace.dev/cmd/run/engine/seccomp"
+	"subtrace.dev/cmd/run/fd"
+	"subtrace.dev/cmd/run/socket"
 )
 
 type Process struct {

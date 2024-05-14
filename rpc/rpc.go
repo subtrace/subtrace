@@ -14,10 +14,9 @@ import (
 	"os"
 	"time"
 
-	"subtrace.dev/cli/config"
-
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
+	"subtrace.dev/config"
 )
 
 type Option func(*http.Request) error

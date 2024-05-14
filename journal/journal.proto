@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "subtrace.dev/cli/journal";
+option go_package = "subtrace.dev/journal";
 
 enum PageType {
   JOURNAL_BEGIN       = 0;

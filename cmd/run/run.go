@@ -20,18 +20,17 @@ import (
 	"time"
 	"unsafe"
 
-	"subtrace.dev/cli/cmd/run/engine"
-	"subtrace.dev/cli/cmd/run/engine/process"
-	"subtrace.dev/cli/cmd/run/engine/seccomp"
-	"subtrace.dev/cli/cmd/run/fd"
-	"subtrace.dev/cli/cmd/run/futex"
-	"subtrace.dev/cli/cmd/run/kernel"
-	"subtrace.dev/cli/cmd/run/tls"
-	"subtrace.dev/cli/journal"
-	"subtrace.dev/cli/logging"
-
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"golang.org/x/sys/unix"
+	"subtrace.dev/cmd/run/engine"
+	"subtrace.dev/cmd/run/engine/process"
+	"subtrace.dev/cmd/run/engine/seccomp"
+	"subtrace.dev/cmd/run/fd"
+	"subtrace.dev/cmd/run/futex"
+	"subtrace.dev/cmd/run/kernel"
+	"subtrace.dev/cmd/run/tls"
+	"subtrace.dev/journal"
+	"subtrace.dev/logging"
 )
 
 type Command struct {

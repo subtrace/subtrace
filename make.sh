@@ -7,7 +7,7 @@ cmd:subtrace() {
 }
 
 cmd:debug() {
-  CGO_ENABLED=0 go build -ldflags "-X 'subtrace.dev/cli/config.ControlPlaneURI=http://127.0.0.1:8080'" -o subtrace
+  CGO_ENABLED=0 go build -ldflags "-X 'subtrace.dev/config.ControlPlaneURI=http://127.0.0.1:8080'" -o subtrace
 }
 
 cmd:proto() {

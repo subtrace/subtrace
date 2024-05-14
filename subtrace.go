@@ -12,11 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"subtrace.dev/cli/cmd/run"
-	"subtrace.dev/cli/cmd/worker"
-
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
+	"subtrace.dev/cmd/run"
+	"subtrace.dev/cmd/worker"
 )
 
 func main() {

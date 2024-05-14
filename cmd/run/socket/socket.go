@@ -15,10 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"subtrace.dev/cli/cmd/run/fd"
-	"subtrace.dev/cli/journal"
-
 	"golang.org/x/sys/unix"
+	"subtrace.dev/cmd/run/fd"
+	"subtrace.dev/journal"
 )
 
 const (
