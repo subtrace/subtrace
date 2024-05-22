@@ -115,3 +115,48 @@ message ListUploads {
     repeated Item items = 1;
   }
 }
+
+message Row {
+    optional string http_id = 0;
+    optional int64 begin_time = 1;
+    optional int64 duration = 2;
+    optional string domain = 3;
+    optional string method = 4;
+    optional string path = 5;
+    optional string user_agent = 6;
+    optional int32 status_code = 7;
+    // TODO: request_content_type, response_content_type header
+}
+
+message Result {
+  string error = 1;
+  repeated Row rows = 2;
+  bool has_more = 3;
+}
+
+message ListQueries {
+  message Request {
+    int64 pending_since_time = 1;
+  }
+
+  message Item {
+    string query_id = 1;
+    string sql_query = 2;
+  }
+
+  message Response {
+    string error = 1000;
+    repeated Item items = 1;
+  }
+}
+
+message SetQueryResult {
+  message Request {
+    string query_id = 1;
+    Result result = 2;
+  }
+
+  message Response {
+    string error = 1000;
+  }
+}
