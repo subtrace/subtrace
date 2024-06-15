@@ -17,7 +17,6 @@ import (
 
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/fd"
-	"subtrace.dev/journal"
 )
 
 const (
@@ -234,12 +233,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 		return unix.EBADF, nil
 	}
 
-	p := &proxy{
-		tcpInfo: &journal.TCPInfo{
-			SocketType: journal.SocketType_Dial,
-			CreateTime: time.Now().UnixNano(),
-		},
-	}
+	p := &proxy{begin: time.Now(), isOutgoing: true}
 
 	isBlocking, err := s.isBlocking()
 	if err != nil {
@@ -335,13 +329,12 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 
 		conn, err := d.DialContext(context.TODO(), "tcp", addr.String())
 		if err != nil {
-			slog.Debug("failed to connect to external", "sock", s, "addr", addr, "err", err, "duration", (time.Now().UnixNano()-p.tcpInfo.CreateTime)/1000)
+			slog.Debug("failed to connect to external", "sock", s, "addr", addr, "err", err, "duration", time.Since(p.begin).Nanoseconds()/1000)
 			errs <- fmt.Errorf("dial external: %w", err)
 			return
 		}
 		p.external = conn.(*net.TCPConn)
-		p.tcpInfo.ConnectTime = time.Now().UnixNano()
-		slog.Debug("connected to external", "sock", s, "addr", addr, "took", (p.tcpInfo.ConnectTime-p.tcpInfo.CreateTime)/1000)
+		slog.Debug("connected to external", "sock", s, "addr", addr, "took", time.Since(p.begin).Nanoseconds()/1000)
 		errs <- nil
 	}()
 
@@ -668,11 +661,9 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 			switch {
 			case err == nil:
 				buffer <- &proxy{
-					tcpInfo: &journal.TCPInfo{
-						SocketType: journal.SocketType_Accept,
-						CreateTime: time.Now().UnixNano(),
-					},
-					external: external.(*net.TCPConn),
+					begin:      time.Now(),
+					isOutgoing: false,
+					external:   external.(*net.TCPConn),
 				}
 			case errors.Is(err, net.ErrClosed):
 				return
@@ -759,8 +750,6 @@ func (s *Socket) Accept(flags int) (*Socket, syscall.Errno, error) {
 	if p.process.LocalAddr().String() != addr.String() {
 		panic(fmt.Sprintf("dialed process-side local does not match accepted connection: %s != %s", p.process.LocalAddr(), addr))
 	}
-
-	p.tcpInfo.ConnectTime = time.Now().UnixNano()
 	slog.Debug("accepter dequeued accepted connection", "sock", s, "addr", addr)
 
 	child := &Socket{Domain: s.Domain}

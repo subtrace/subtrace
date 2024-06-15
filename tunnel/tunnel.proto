@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package subtrace.tunnel;
+
+option go_package = "subtrace.dev/tunnel";
+
+enum Role {
+  INSERT = 0;
+  SELECT = 1;
+}
+
+// POST /api/CreateTunnel
+message Create {
+  message Request {
+    optional string project_id = 1;
+    Role role = 2;
+  }
+
+  message Response {
+    string error = 1000;
+    string tunnel_id = 1;
+    string endpoint = 2;
+  }
+}
+
+// POST /api/ListOpenTunnels
+message ListOpen {
+  message Request {
+    int64 create_after_time = 1;
+  }
+
+  message Item {
+    string tunnel_id = 1;
+    string endpoint = 2;
+    Role role = 3;
+  }
+
+  message Response {
+    string error = 1000;
+    repeated Item tunnels = 1;
+  }
+}
+
+message EventField {
+  int32 type = 1;
+  int32 tag = 2;
+}
+
+message ClientHello {
+  repeated EventField event_fields = 1;
+}
+
+message ServerHello {
+  repeated EventField event_fields = 1;
+}
+
+message Query {
+  string tunnel_query_id = 1;
+  string sql_statement = 2;
+  optional bytes data = 3;
+}
+
+message Result {
+  string tunnel_query_id = 1;
+  string tunnel_error = 2;
+  string clickhouse_query_id = 3;
+  string clickhouse_error = 4;
+  bytes data = 5;
+}

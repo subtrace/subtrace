@@ -11,21 +11,35 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
+	"os"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
+	"google.golang.org/protobuf/proto"
 	"subtrace.dev/cmd/run/tls"
-	"subtrace.dev/journal"
+	"subtrace.dev/cmd/run/tracer"
+	"subtrace.dev/event"
 )
 
+var hostname string
+
+func init() {
+	hostname, _ = os.Hostname()
+}
+
 type proxy struct {
-	tcpInfo  *journal.TCPInfo
-	tlsInfo  *journal.TLSInfo
 	process  *net.TCPConn
 	external *net.TCPConn
+
+	begin         time.Time
+	isOutgoing    bool
+	tlsServerName *string
+	event         *event.Event
 }
 
 func (p *proxy) Close() error {
@@ -75,7 +89,7 @@ func (p *proxy) LogValue() slog.Value {
 		external = slog.Group("external", "local", p.external.LocalAddr(), "remote", p.external.RemoteAddr())
 	}
 
-	return slog.GroupValue(slog.String("type", p.tcpInfo.SocketType.String()), process, external)
+	return slog.GroupValue(slog.Bool("outgoing", p.isOutgoing), process, external)
 }
 
 func (p *proxy) start() {
@@ -83,9 +97,6 @@ func (p *proxy) start() {
 		slog.Error("TCP proxy missing connection", "proxy", p)
 		return
 	}
-
-	p.tcpInfo.RemotePeerAddr = p.external.RemoteAddr().String()
-	p.tcpInfo.TraceeBindAddr = p.process.RemoteAddr().String()
 
 	// TODO: should we match the tracee's TCP options on the external side?
 
@@ -103,7 +114,7 @@ func (p *proxy) start() {
 	}()
 
 	cli, srv := newBufConn(p.process), newBufConn(p.external)
-	if p.tcpInfo.SocketType == journal.SocketType_Accept {
+	if !p.isOutgoing {
 		cli, srv = srv, cli
 	}
 
@@ -182,19 +193,19 @@ func (p *proxy) proxyOptimistic(cli, srv *bufConn) error {
 }
 
 func (p *proxy) proxyTLS(cli, srv *bufConn) error {
-	if p.tcpInfo.SocketType == journal.SocketType_Accept {
+	if !p.isOutgoing {
 		// We can't intercept incoming TLS requests (yet). Doing so would require
 		// some kind of cooperation from the tracee because the location of the CA
 		// certificate and private key are application-specific.
 		return p.proxyFallback(cli, srv)
 	}
 
-	if p.tlsInfo != nil {
-		// TLS metadata already exists? Could this be TLS within TLS? Bail out.
+	if p.tlsServerName != nil {
+		// TLS server name already exists? Could this be TLS within TLS? Bail out.
 		return p.proxyFallback(cli, srv)
 	}
 
-	ct, st, tlsInfo, err := tls.Handshake(cli, srv)
+	tcli, tsrv, serverName, err := tls.Handshake(cli, srv)
 	if err != nil {
 		// If the ephemeral MITM certificate we generated is not recognized, most
 		// clients will close the connection during TLS handshake. This probably
@@ -207,8 +218,8 @@ func (p *proxy) proxyTLS(cli, srv *bufConn) error {
 		return fmt.Errorf("proxy tls handshake: %w", err)
 	}
 
-	p.tlsInfo = tlsInfo
-	if err := p.proxyOptimistic(newBufConn(ct), newBufConn(st)); err != nil {
+	p.tlsServerName = &serverName
+	if err := p.proxyOptimistic(newBufConn(tcli), newBufConn(tsrv)); err != nil {
 		return fmt.Errorf("proxy tls: %w", err)
 	}
 	return nil
@@ -230,24 +241,98 @@ func (p *proxy) proxyHTTP(cli, srv *bufConn) error {
 	protocol := guessProtocol(sample)
 	switch protocol {
 	case "http/1":
+		return p.proxyHTTP1(cli, srv)
 	case "http/2":
+		// TODO: reintroduce HTTP/2 support
+		return p.proxyFallback(cli, srv)
 	default:
 		return p.proxyFallback(cli, srv)
 	}
+}
 
-	c, err := journal.Default.NewConn(protocol, p.tcpInfo, p.tlsInfo)
-	if err != nil {
-		return fmt.Errorf("create journal conn: %w", err)
-	}
+func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
+	errs := make(chan error, 3)
 
-	errs := make(chan error, 2)
+	cr, cw := io.Pipe()
+	sr, sw := io.Pipe()
+
+	go func() {
+		defer func() { go io.Copy(io.Discard, cr) }()
+		defer func() { go io.Copy(io.Discard, sr) }()
+
+		cr, sr := bufio.NewReader(cr), bufio.NewReader(sr)
+		for {
+			req, err := http.ReadRequest(cr)
+			switch {
+			case err == nil:
+			case errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed):
+				errs <- nil
+				return
+			default:
+				errs <- fmt.Errorf("tracer: read request: %w", err)
+				return
+			}
+
+			if req.Body != nil {
+				go func() {
+					io.Copy(io.Discard, req.Body)
+					req.Body.Close()
+				}()
+			}
+
+			ev := new(event.Event)
+			ev.EventId = uuid.NewString()
+			ev.Timestamp = time.Now().UnixNano()
+			ev.Type = "http"
+
+			ev.Pid = proto.Int64(int64(os.Getpid()))
+			ev.Hostname = proto.String(hostname)
+
+			ev.HttpIsOutgoing = proto.Bool(p.isOutgoing)
+			ev.HttpClientAddr = proto.String(p.process.RemoteAddr().String())
+			ev.HttpServerAddr = proto.String(p.external.RemoteAddr().String())
+			if !p.isOutgoing {
+				ev.HttpClientAddr, ev.HttpServerAddr = ev.HttpServerAddr, ev.HttpClientAddr
+			}
+
+			ev.TlsServerName = p.tlsServerName
+
+			ev.HttpVersion = proto.String(req.Proto)
+			ev.HttpReqMethod = proto.String(req.Method)
+			ev.HttpReqPath = proto.String(req.URL.Path)
+
+			resp, err := http.ReadResponse(sr, req)
+			switch {
+			case err == nil:
+			case errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed):
+				errs <- nil
+				return
+			default:
+				errs <- fmt.Errorf("tracer: read response: %w", err)
+				return
+			}
+
+			if resp.Body != nil {
+				// Unlike the io.Copy(io.Discard, req.Body), we discard the response
+				// body without a new goroutine so that the time.Now() call below
+				// captures the HTTP request duration accurately.
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+			}
+
+			ev.HttpDuration = proto.Int64(time.Now().UnixNano() - ev.Timestamp)
+			ev.HttpRespStatusCode = proto.Int32(int32(resp.StatusCode))
+
+			tracer.DefaultManager.Insert(ev)
+		}
+	}()
 
 	go func() {
 		defer srv.CloseWrite()
 		defer cli.CloseRead()
-		defer c.Request.Close()
-		if err := p.copyRawSingle("client -> server", protocol, srv, io.TeeReader(cli, c.Request)); err != nil {
-			errs <- fmt.Errorf("copy client->server: %w", err)
+		defer cw.Close()
+		if err := p.copyRawSingle("client->server", "http/1", srv, io.TeeReader(cli, cw)); err != nil {
+			errs <- fmt.Errorf("copy raw: client->server: %w", err)
 			return
 		}
 		errs <- nil
@@ -256,15 +341,15 @@ func (p *proxy) proxyHTTP(cli, srv *bufConn) error {
 	go func() {
 		defer cli.CloseWrite()
 		defer srv.CloseRead()
-		defer c.Response.Close()
-		if err := p.copyRawSingle("server -> client", protocol, cli, io.TeeReader(srv, c.Response)); err != nil {
-			errs <- fmt.Errorf("copy server->client: %w", err)
+		defer sw.Close()
+		if err := p.copyRawSingle("server->client", "http/1", cli, io.TeeReader(srv, sw)); err != nil {
+			errs <- fmt.Errorf("copy raw: server->client: %w", err)
 			return
 		}
 		errs <- nil
 	}()
 
-	if err := errors.Join(<-errs, <-errs); err != nil {
+	if err := errors.Join(<-errs, <-errs, <-errs); err != nil {
 		return fmt.Errorf("proxy http: %w", err)
 	}
 	return nil
@@ -301,7 +386,7 @@ func (p *proxy) proxyFallback(cli, srv *bufConn) error {
 
 func (p *proxy) copyRawSingle(dir, proto string, w io.Writer, r io.Reader) error {
 	n, err := io.Copy(w, r)
-	dur := (time.Now().UnixNano() - p.tcpInfo.ConnectTime) / 1000
+	dur := time.Since(p.begin).Nanoseconds() / 1000
 	switch {
 	case err == nil:
 	case errors.Is(err, net.ErrClosed):

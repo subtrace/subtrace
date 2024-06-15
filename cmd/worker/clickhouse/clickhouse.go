@@ -48,15 +48,15 @@ func (c *Client) ApplyMigrations(ctx context.Context) (int, error) {
 	if err := c.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS migrations (
 			file String PRIMARY KEY,
-			insert_time UInt64,
-		) ENGINE = MergeTree PARTITION BY bitShiftRight(insert_time, 20);
+			insert_time DateTime64(6, 'UTC') NOT NULL,
+		) ENGINE = MergeTree ORDER BY file;
 	`); err != nil {
-		return 0, fmt.Errorf("create migrations: %w", err)
+		return 0, fmt.Errorf("CREATE TABLE migrations: %w", err)
 	}
 
 	files, err := migrations.ReadDir("migrations")
 	if err != nil {
-		return 0, fmt.Errorf("list: %w", err)
+		return 0, fmt.Errorf("read migrations dir: %w", err)
 	}
 
 	applied := 0
@@ -85,10 +85,9 @@ func (c *Client) ApplyMigrations(ctx context.Context) (int, error) {
 		}
 
 		if err := c.Exec(ctx, `
-			INSERT INTO
-			migrations(file, insert_time)
-			VALUES($1, $2);
-		`, f.Name(), time.Now().UTC().UnixNano()); err != nil {
+			INSERT INTO migrations (file, insert_time)
+			VALUES ($1, $2);
+		`, f.Name(), time.Now().UTC()); err != nil {
 			return applied, fmt.Errorf("INSERT %s: %w", f.Name(), err)
 		}
 		applied++
