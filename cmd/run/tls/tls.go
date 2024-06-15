@@ -17,8 +17,6 @@ import (
 	"net"
 	"os"
 	"time"
-
-	"subtrace.dev/journal"
 )
 
 var (
@@ -211,52 +209,46 @@ func newConfigFromClientHello(chi *tls.ClientHelloInfo) *tls.Config {
 // connections. It returns the plaintext version of each connection. It does
 // not verify the validity of the TLS certificate presented by the upstream
 // server.
-func Handshake(downCipher, upCipher net.Conn) (*tls.Conn, *tls.Conn, *journal.TLSInfo, error) {
-	info := &journal.TLSInfo{HandshakeBeginTime: time.Now().UnixNano()}
-
+func Handshake(downCipher, upCipher net.Conn) (*tls.Conn, *tls.Conn, string, error) {
 	var upPlain *tls.Conn
+	var serverName string
 	downPlain := tls.Server(downCipher, &tls.Config{
 		GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
-			info.ServerName = chi.ServerName
-			for _, cs := range chi.CipherSuites {
-				info.ClientCipherSuites = append(info.ClientCipherSuites, int32(cs))
-			}
-			for _, v := range chi.SupportedVersions {
-				info.ClientVersions = append(info.ClientVersions, int32(v))
-			}
+			serverName = chi.ServerName
 
 			slog.Debug("starting upstream TLS handshake", "serverName", chi.ServerName)
 			upPlain = tls.Client(upCipher, newConfigFromClientHello(chi))
 			if err := upPlain.Handshake(); err != nil {
-				slog.Debug("upstream TLS handshake failed", "serverName", chi.ServerName, "error", err)
-				return nil, fmt.Errorf("server handshake: %w", err)
+				return nil, fmt.Errorf("upstream handshake: %w", err)
 			}
-			slog.Debug("upstream TLS handshake complete", "serverName", chi.ServerName)
+			slog.Debug("upstream TLS handshake complete", "serverName", upPlain.ConnectionState().ServerName)
 
-			cert, err := newLeafCertificate(upPlain.ConnectionState().PeerCertificates[0])
-			if err != nil {
-				return nil, fmt.Errorf("new server certificate: %w", err)
-			}
-			ret := &tls.Config{
-				ServerName:   chi.ServerName,
-				Certificates: []tls.Certificate{cert},
-			}
+			ret := &tls.Config{ServerName: chi.ServerName}
 			if proto := upPlain.ConnectionState().NegotiatedProtocol; proto != "" {
 				ret.NextProtos = []string{proto}
 			}
-			if err := chi.SupportsCertificate(&cert); err != nil {
-				return nil, fmt.Errorf("ClientHello does not support ephemeral server certificate: %w", err)
+
+			supported := false
+			for _, orig := range upPlain.ConnectionState().PeerCertificates {
+				dup, err := newLeafCertificate(orig)
+				if err != nil {
+					return nil, fmt.Errorf("create duplicate leaf cert: %w", err)
+				}
+				if err := chi.SupportsCertificate(&dup); err == nil {
+					supported = true
+				}
+				ret.Certificates = append(ret.Certificates, dup)
+			}
+
+			if !supported {
+				return nil, fmt.Errorf("ClientHello does not support ephemeral server certificate")
 			}
 			return ret, nil
 		},
 	})
 	if err := downPlain.Handshake(); err != nil {
-		return nil, nil, nil, fmt.Errorf("handshake downstream: %v", err)
+		return nil, nil, serverName, fmt.Errorf("handshake downstream: %v", err)
 	}
 
-	info.HandshakeEndTime = time.Now().UnixNano()
-	info.NegotiatedVersion = int32(upPlain.ConnectionState().Version)
-	info.NegotiatedCipherSuite = int32(upPlain.ConnectionState().CipherSuite)
-	info.NegotiatedProtocol = upPlain.ConnectionState().NegotiatedProtocol
-	return downPlain, upPlain, info, nil
+	return downPlain, upPlain, serverName, nil
 }

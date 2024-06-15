@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"subtrace.dev/cmd/run"
 	"subtrace.dev/cmd/worker"
@@ -25,7 +24,6 @@ func main() {
 	c := new(ffcli.Command)
 	c.Name = filepath.Base(os.Args[0])
 	c.ShortUsage = "subtrace <command>"
-	c.Options = []ff.Option{ff.WithEnvVarPrefix("SUBTRACE")}
 
 	c.Subcommands = append(c.Subcommands, run.NewCommand())
 	c.Subcommands = append(c.Subcommands, worker.NewCommand())
