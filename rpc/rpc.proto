@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+enum TunnelRole {
+  INSERT = 0;
+  SELECT = 1;
+}
+
+// CreateTunnel lets tracer nodes and the dashboard create a tunnel.
+message CreateTunnel {
+  message Request {
+    optional string project_id = 1;
+    TunnelRole role = 2;
+  }
+
+  message Response {
+    string error = 1000;
+    string tunnel_id = 1;
+    string endpoint = 2;
+  }
+}
+
+// ListOpenTunnels lets worker nodes poll for the list of open tunnels.
+message ListOpenTunnels {
+  message Request {
+    int64 create_after_time = 1;
+  }
+
+  message Item {
+    string tunnel_id = 1;
+    string endpoint = 2;
+    TunnelRole role = 3;
+  }
+
+  message Response {
+    string error = 1000;
+    repeated Item tunnels = 1;
+  }
+}
+
+message EventField {
+  int32 type = 1;
+  int32 tag = 2;
+}
+
+message TunnelClientHello {
+  repeated EventField event_fields = 1;
+}
+
+message TunnelServerHello {
+  repeated EventField event_fields = 1;
+}
+
+message TunnelQuery {
+  string tunnel_query_id = 1;
+  string sql_statement = 2;
+  optional bytes payload = 3;
+}
+
+message TunnelResult {
+  string tunnel_query_id = 1;
+  string tunnel_error = 2;
+  string clickhouse_query_id = 3;
+  string clickhouse_error = 4;
+  bytes payload = 5;
+}

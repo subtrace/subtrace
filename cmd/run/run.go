@@ -20,6 +20,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/engine"
@@ -29,7 +30,7 @@ import (
 	"subtrace.dev/cmd/run/futex"
 	"subtrace.dev/cmd/run/kernel"
 	"subtrace.dev/cmd/run/tls"
-	"subtrace.dev/journal"
+	"subtrace.dev/cmd/run/tracer"
 	"subtrace.dev/logging"
 )
 
@@ -52,6 +53,7 @@ func NewCommand() *ffcli.Command {
 		return ffcli.DefaultUsageFunc(fc) + ExtraHelp()
 	}
 
+	c.Options = []ff.Option{ff.WithEnvVarPrefix("SUBTRACE")}
 	c.Exec = c.entrypoint
 	return &c.Command
 }
@@ -261,12 +263,9 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		return 0, fmt.Errorf("generate TLS ephemeral CA: %w", err)
 	}
 
-	if err := journal.Init(); err != nil {
-		return 0, fmt.Errorf("init journal: %w", err)
-	}
 	defer func() {
-		if err := journal.Default.Flush(); err != nil {
-			slog.Error("failed to flush journal", "err", err)
+		if err := tracer.DefaultManager.Flush(); err != nil {
+			slog.Error("failed to flush tracer event manager", "err", err)
 		}
 	}()
 

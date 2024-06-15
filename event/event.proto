@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package subtrace.event;
+
+message Event {
+  string event_id   = 1;
+  int64  timestamp  = 2;
+  string type       = 3;
+
+  optional int64  pid                   =  4;
+  optional string hostname              =  5;
+  optional string tls_server_name       =  6;
+  optional string http_version          =  7;
+  optional bool   http_is_outgoing      =  8;
+  optional string http_client_addr      =  9;
+  optional string http_server_addr      = 10;
+  optional int64  http_duration         = 11;
+  optional string http_req_method       = 12;
+  optional string http_req_path         = 13;
+  optional int32  http_resp_status_code = 14;
+}
