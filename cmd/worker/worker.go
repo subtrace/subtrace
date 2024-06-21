@@ -19,7 +19,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -157,18 +156,24 @@ func (c *Command) loop(ctx context.Context) error {
 }
 
 func (c *Command) handleTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string, role tunnel.Role) error {
+	start := time.Now()
+	defer func() { slog.Debug("closing tunnel", "tunnelID", tunnelID, "time", time.Since(start)) }()
+
 	conn, path, err := c.initTunnel(ctx, tunnelID, endpoint, role)
 	if err != nil {
-		if path != "" {
-			os.Remove(path)
+		var wsErr websocket.CloseError
+		if errors.As(err, &wsErr) && wsErr.Code == websocket.StatusGoingAway {
+			// StatusGoingAway means the tunnel proxy timed out waiting for the
+			// source side to join. This shouldn't happen often, but even if it does,
+			// it's not really an error from the worker's point of view, hence the
+			// INFO-level log message.
+			slog.Info("tunnel timed out waiting for source", "tunnelID", tunnelID, "time", time.Since(start))
+			return nil
 		}
 		return fmt.Errorf("init tunnel: %w", err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 	defer os.Remove(path)
-
-	slog.Debug("initialized tunnel", "tunnelID", tunnelID)
-	defer slog.Debug("closing tunnel", "tunnelID", tunnelID)
 
 	if err := c.loopTunnel(ctx, tunnelID, conn, role); err != nil && !strings.Contains(err.Error(), "StatusNormalClosure") {
 		return fmt.Errorf("loop tunnel: %w", err)
@@ -177,6 +182,8 @@ func (c *Command) handleTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint
 }
 
 func (c *Command) initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string, role tunnel.Role) (_ *websocket.Conn, _ string, finalErr error) {
+	slog.Debug("initializing tunnel session", "tunnelID", tunnelID, "role", role)
+
 	conn, resp, err := websocket.Dial(ctx, endpoint, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("dial: %w", err)
@@ -229,6 +236,11 @@ func (c *Command) initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint s
 	if err != nil {
 		return nil, "", fmt.Errorf("client hello: write tunnel protobuf schema: %w", err)
 	}
+	defer func() {
+		if finalErr != nil {
+			os.Remove(path)
+		}
+	}()
 
 	b, err = proto.Marshal(&tunnel.ServerHello{})
 	if err != nil {
@@ -349,7 +361,7 @@ func (c *Command) writeTunnelProto(ctx context.Context, tunnelID uuid.UUID, fiel
 }
 
 func (c *Command) loopTunnel(ctx context.Context, tunnelID uuid.UUID, conn *websocket.Conn, role tunnel.Role) error {
-	defer conn.CloseNow()
+	slog.Debug("starting tunnel loop", "tunnelID", tunnelID)
 
 	var mu sync.Mutex
 	var prevCancel context.CancelFunc

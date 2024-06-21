@@ -3,12 +3,14 @@ package tracer
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
@@ -116,7 +118,9 @@ func init() {
 	}
 }
 
-func initTunnel(ctx context.Context, endpoint string) (_ *websocket.Conn, finalErr error) {
+func initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string) (_ *websocket.Conn, finalErr error) {
+	slog.Debug("initializing tunnel session", "tunnelID", tunnelID, "role", tunnel.Role_INSERT)
+
 	conn, resp, err := websocket.Dial(ctx, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("dial: %w", err)
@@ -233,16 +237,27 @@ func (b *block) flush(ctx context.Context) error {
 		return err
 	}
 
-	conn, err := initTunnel(ctx, tun.Endpoint)
+	tunnelID, err := uuid.Parse(tun.TunnelId)
 	if err != nil {
-		return fmt.Errorf("init tunnel: %w", err)
+		return fmt.Errorf("parse tunnelID: %w", err)
+	}
+
+	start := time.Now()
+	conn, err := initTunnel(ctx, tunnelID, tun.Endpoint)
+	if err != nil {
+		var wsErr websocket.CloseError
+		if errors.As(err, &wsErr) && wsErr.Code == websocket.StatusGoingAway {
+			// TODO: should we retry?
+			return fmt.Errorf("init tunnel: tunnel %s: timed out waiting for sink after %v", tunnelID.String(), time.Since(start))
+		}
+		return fmt.Errorf("init tunnel: tunnel %s: %w", tunnelID, err)
 	}
 
 	if err := doInsert(ctx, conn, data); err != nil {
 		return fmt.Errorf("do insert: %w", err)
 	}
 
-	slog.Debug("flushed data to clickhouse", "events", b.count.Load(), "size", len(data))
+	slog.Debug("flushed data to clickhouse", "events", b.count.Load(), "size", len(data), "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
