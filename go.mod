@@ -4,14 +4,12 @@ go 1.22.0
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.23.2
-	github.com/golang/protobuf v1.5.3
-	github.com/golang/snappy v0.0.4
 	github.com/google/uuid v1.6.0
 	github.com/peterbourgon/ff/v3 v3.4.0
-	golang.org/x/net v0.22.0
 	golang.org/x/sys v0.18.0
 	google.golang.org/protobuf v1.33.0
 	gvisor.dev/gvisor v0.0.0-20230825060655-6a16525c0768
+	nhooyr.io/websocket v1.8.11
 )
 
 require (
@@ -27,7 +25,6 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	go.opentelemetry.io/otel v1.24.0 // indirect
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
