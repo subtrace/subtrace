@@ -102,6 +102,10 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		return nil
 	}
 
+	if val := os.Getenv("SUBTRACE_TOKEN"); val == "" {
+		return fmt.Errorf("SUBTRACE_TOKEN is empty")
+	}
+
 	switch os.Getenv("_SUBTRACE_CHILD") {
 	case "": // parent
 		code, err := c.entrypointParent(ctx, args)

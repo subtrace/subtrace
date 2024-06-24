@@ -61,6 +61,11 @@ func NewCommand() *ffcli.Command {
 
 func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	logging.Init()
+
+	if val := os.Getenv("SUBTRACE_TOKEN"); val == "" {
+		return fmt.Errorf("SUBTRACE_TOKEN is empty")
+	}
+
 	slog.Info("starting worker node")
 
 	if err := c.initClickhouse(ctx); err != nil {
