@@ -14,8 +14,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang/protobuf/jsonpb"
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"subtrace.dev/config"
 )
 
@@ -29,14 +29,14 @@ func WithoutAuth() Option {
 }
 
 func Call[R any, PR ptr[R]](ctx context.Context, w proto.Message, path string, r *R, opts ...Option) (int, error) {
-	b := new(bytes.Buffer)
-	if err := new(jsonpb.Marshaler).Marshal(b, PR(r)); err != nil {
+	b, err := protojson.Marshal(PR(r))
+	if err != nil {
 		return 0, fmt.Errorf("marshal: %w", err)
 	}
 
 	start := time.Now()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", config.ControlPlaneURI+path, b)
+	req, err := http.NewRequestWithContext(ctx, "POST", config.ControlPlaneURI+path, bytes.NewBuffer(b))
 	if err != nil {
 		return 0, fmt.Errorf("new request: %w", err)
 	}
@@ -75,7 +75,12 @@ func Call[R any, PR ptr[R]](ctx context.Context, w proto.Message, path string, r
 		return resp.StatusCode, fmt.Errorf("%s", resp.Status)
 	}
 
-	if err := jsonpb.Unmarshal(resp.Body, w); err != nil {
+	b, err = io.ReadAll(io.LimitReader(resp.Body, 64<<20)) // 64 MB limit
+	if err != nil {
+		return 0, fmt.Errorf("read response: %w", err)
+	}
+
+	if err := protojson.Unmarshal(b, w); err != nil {
 		if errors.Is(err, io.EOF) {
 			return resp.StatusCode, fmt.Errorf("%s", resp.Status)
 		}
