@@ -20,9 +20,13 @@ type Client struct {
 	driver.Conn
 }
 
-func New(ctx context.Context) (*Client, error) {
+func New(ctx context.Context, host string) (*Client, error) {
+	// 9000 is the ClickHouse native protocol port
+	// ref: https://clickhouse.com/docs/en/guides/sre/network-ports
 	conn, err := clickhouse.Open(&clickhouse.Options{
-		Auth: clickhouse.Auth{Database: "subtrace"},
+		Addr:        []string{fmt.Sprintf("%s:9000", host)},
+		Auth:        clickhouse.Auth{Database: "subtrace"},
+		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open: %w", err)
