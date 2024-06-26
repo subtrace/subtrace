@@ -15,4 +15,4 @@ jobs:
     - name: docker build
       run: docker build . --push --progress plain --tag "ghcr.io/subtrace/subtrace:${GITHUB_SHA}"
     - name: docker tag
-      run: docker tag . "ghcr.io/subtrace/subtrace:${GITHUB_SHA}" ghcr.io/subtrace/subtrace:latest && docker push ghcr.io/subtrace/subtrace:latest
+      run: docker tag "ghcr.io/subtrace/subtrace:${GITHUB_SHA}" ghcr.io/subtrace/subtrace:latest && docker push ghcr.io/subtrace/subtrace:latest
