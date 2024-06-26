@@ -35,7 +35,10 @@ import (
 
 type Command struct {
 	flags struct {
-		clickhouseFormatSchemas string
+		clickhouse struct {
+			host          string
+			formatSchemas string
+		}
 	}
 
 	ffcli.Command
@@ -52,7 +55,8 @@ func NewCommand() *ffcli.Command {
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
-	c.FlagSet.StringVar(&c.flags.clickhouseFormatSchemas, "clickhouse-format-schemas", "/var/lib/clickhouse/format_schemas/", "clickhouse format schemas directory")
+	c.FlagSet.StringVar(&c.flags.clickhouse.host, "clickhouse-host", "localhost", "clickhouse host")
+	c.FlagSet.StringVar(&c.flags.clickhouse.formatSchemas, "clickhouse-format-schemas", "/var/lib/clickhouse/format_schemas/", "clickhouse format schemas directory")
 
 	c.Options = []ff.Option{ff.WithEnvVarPrefix("SUBTRACE")}
 	c.Exec = c.entrypoint
@@ -73,7 +77,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	}
 	defer c.clickhouse.Close()
 
-	if err := os.MkdirAll(c.flags.clickhouseFormatSchemas, 0o755); err != nil {
+	if err := os.MkdirAll(c.flags.clickhouse.formatSchemas, 0o755); err != nil {
 		return fmt.Errorf("create clickhouse format schemas directory: %w", err)
 	}
 
@@ -85,7 +89,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 }
 
 func (c *Command) initClickhouse(ctx context.Context) error {
-	client, err := clickhouse.New(ctx)
+	client, err := clickhouse.New(ctx, c.flags.clickhouse.host)
 	if err != nil {
 		return fmt.Errorf("create client: %w", err)
 	}
@@ -339,7 +343,7 @@ func (c *Command) addClickhouseColumns(ctx context.Context, fields []*tunnel.Eve
 }
 
 func (c *Command) writeTunnelProto(ctx context.Context, tunnelID uuid.UUID, fields []*tunnel.EventField) (string, error) {
-	path := filepath.Join(c.flags.clickhouseFormatSchemas, fmt.Sprintf("%s.proto", tunnelID))
+	path := filepath.Join(c.flags.clickhouse.formatSchemas, fmt.Sprintf("%s.proto", tunnelID))
 
 	f, err := os.Create(path)
 	if err != nil {
@@ -412,7 +416,7 @@ func (c *Command) loopTunnel(ctx context.Context, tunnelID uuid.UUID, conn *webs
 
 		go func() {
 			defer mu.Unlock()
-			if err := handleQuery(childCtx, tunnelID, conn, role, &query); err != nil {
+			if err := c.handleQuery(childCtx, tunnelID, conn, role, &query); err != nil {
 				slog.Error("failed to handle query", "tunnelID", tunnelID, "queryID", query.TunnelQueryId, "err", err)
 				return
 			}
@@ -420,10 +424,10 @@ func (c *Command) loopTunnel(ctx context.Context, tunnelID uuid.UUID, conn *webs
 	}
 }
 
-func handleQuery(ctx context.Context, tunnelID uuid.UUID, conn *websocket.Conn, role tunnel.Role, query *tunnel.Query) error {
+func (c *Command) handleQuery(ctx context.Context, tunnelID uuid.UUID, conn *websocket.Conn, role tunnel.Role, query *tunnel.Query) error {
 	result := &tunnel.Result{TunnelQueryId: query.TunnelQueryId}
 
-	status, headers, data, err := proxyClickhouse(ctx, tunnelID, role, query)
+	status, headers, data, err := c.proxyClickhouse(ctx, tunnelID, role, query)
 	switch {
 	case err != nil:
 		result.TunnelError = fmt.Errorf("failed to proxy query to clickhouse: %w", err).Error()
@@ -453,10 +457,12 @@ func handleQuery(ctx context.Context, tunnelID uuid.UUID, conn *websocket.Conn, 
 	return nil
 }
 
-func proxyClickhouse(ctx context.Context, tunnelID uuid.UUID, role tunnel.Role, query *tunnel.Query) (int, http.Header, []byte, error) {
+func (c *Command) proxyClickhouse(ctx context.Context, tunnelID uuid.UUID, role tunnel.Role, query *tunnel.Query) (int, http.Header, []byte, error) {
 	const maxResultBytes = 1 << 20
 
-	u, err := url.Parse("http://localhost:8123/")
+	// 8123 is the ClickHouse HTTP default port
+	// ref: https://clickhouse.com/docs/en/guides/sre/network-ports
+	u, err := url.Parse(fmt.Sprintf("http://%s:8123/", c.flags.clickhouse.host))
 	if err != nil {
 		return 0, nil, nil, fmt.Errorf("parse clickhouse HTTP interface endpoint: %w", err)
 	}
