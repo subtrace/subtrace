@@ -1,0 +1,14 @@
+name: build-docker-pr
+
+on:
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build-docker-pr:
+    name: build-docker-pr
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: docker build
+      run: docker build . --progress plain --tag ghcr.io/subtrace/subtrace:${GITHUB_SHA}

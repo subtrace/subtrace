@@ -1,0 +1,18 @@
+name: build-push-docker-master
+
+on:
+  push:
+    branches: [ "master" ]
+
+jobs:
+  build-push-docker-master:
+    name: build-push-docker-master
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: docker login
+      run: docker login ghcr.io -u "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}"
+    - name: docker build
+      run: docker build . --push --progress plain --tag "ghcr.io/subtrace/subtrace:${GITHUB_SHA}"
+    - name: docker tag
+      run: docker tag . "ghcr.io/subtrace/subtrace:${GITHUB_SHA}" ghcr.io/subtrace/subtrace:latest && docker push ghcr.io/subtrace/subtrace:latest
