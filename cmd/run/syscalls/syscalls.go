@@ -5,7 +5,16 @@ package syscalls
 
 import (
 	"fmt"
+	"runtime"
 )
+
+func GetNumber(name string) int {
+	nr, ok := names[name]
+	if !ok {
+		panic(fmt.Sprintf("GOOS=%s, GOARCH=%s: syscall %q not found", runtime.GOOS, runtime.GOARCH, name))
+	}
+	return nr
+}
 
 func GetName(nr int) string {
 	for name := range names {

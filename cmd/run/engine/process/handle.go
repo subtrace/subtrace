@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -17,6 +18,7 @@ import (
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/socket"
+	"subtrace.dev/cmd/run/syscalls"
 	"subtrace.dev/cmd/run/tls"
 )
 
@@ -142,9 +144,19 @@ func (p *Process) handleFstat(n *seccomp.Notif, dirfd int, pathAddr uintptr, buf
 		return n.Skip()
 	}
 
+	var nr int
+	switch runtime.GOARCH {
+	case "amd64":
+		nr = syscalls.GetNumber("SYS_NEWFSTATAT")
+	case "arm64":
+		nr = syscalls.GetNumber("SYS_FSTATAT")
+	default:
+		panic(fmt.Sprintf("GOARCH=%s: unsupported", runtime.GOARCH))
+	}
+
 	var orig linux.Stat
 	b := make([]byte, orig.SizeBytes(), orig.SizeBytes())
-	if _, _, errno := unix.Syscall6(unix.SYS_FSTATAT, uintptr(dirfd), pathAddr, uintptr(unsafe.Pointer(&b[0])), uintptr(flags), 0, 0); errno != 0 {
+	if _, _, errno := unix.Syscall6(uintptr(nr), uintptr(dirfd), pathAddr, uintptr(unsafe.Pointer(&b[0])), uintptr(flags), 0, 0); errno != 0 {
 		return n.Skip()
 	}
 	orig.UnmarshalBytes(b)
@@ -471,9 +483,20 @@ func init() {
 	Handlers[unix.SYS_FSTAT] = func(p *Process, n *seccomp.Notif) error {
 		return p.handleFstat(n, int(n.Args[0]), 0, uintptr(n.Args[1]), 0)
 	}
-	Handlers[unix.SYS_FSTATAT] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleFstat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
+
+	switch runtime.GOARCH {
+	case "amd64":
+		Handlers[syscalls.GetNumber("SYS_NEWFSTATAT")] = func(p *Process, n *seccomp.Notif) error {
+			return p.handleFstat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
+		}
+	case "arm64":
+		Handlers[syscalls.GetNumber("SYS_FSTATAT")] = func(p *Process, n *seccomp.Notif) error {
+			return p.handleFstat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
+		}
+	default:
+		panic(fmt.Sprintf("GOARCH=%s: unsupported", runtime.GOARCH))
 	}
+
 	Handlers[unix.SYS_STATX] = func(p *Process, n *seccomp.Notif) error {
 		return p.handleStatx(n, int(n.Args[0]), uintptr(n.Args[1]), int(n.Args[2]), int(n.Args[3]), uintptr(n.Args[4]))
 	}
