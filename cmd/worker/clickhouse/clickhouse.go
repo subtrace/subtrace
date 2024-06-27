@@ -20,7 +20,7 @@ type Client struct {
 	driver.Conn
 }
 
-func New(ctx context.Context, host string) (*Client, error) {
+func newClient(ctx context.Context, host string) (*Client, error) {
 	// 9000 is the ClickHouse native protocol port
 	// ref: https://clickhouse.com/docs/en/guides/sre/network-ports
 	conn, err := clickhouse.Open(&clickhouse.Options{
@@ -43,6 +43,32 @@ func New(ctx context.Context, host string) (*Client, error) {
 
 	slog.Info("connected to clickhouse server", "name", info.DisplayName, "version", info.Version, "revision", info.Revision)
 	return &Client{Conn: conn}, nil
+}
+
+func New(ctx context.Context, host string) (*Client, error) {
+	var lastErr error
+	for attempt := 1; attempt < 5; attempt++ {
+		c, err := newClient(ctx, host)
+		if err == nil {
+			return c, nil
+		}
+
+		lastErr = err
+		if attempt < 5 {
+			wait := time.Duration(1<<(attempt-1)) * time.Second
+			slog.Error("failed to connect to clickhouse, waiting and retrying", "err", err, "attempt", attempt, "wait", wait)
+
+			timer := time.NewTicker(wait)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+
+	return nil, lastErr
 }
 
 //go:embed migrations/*.sql
