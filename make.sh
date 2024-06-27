@@ -3,11 +3,16 @@
 set -eo pipefail
 
 cmd:subtrace() {
-  CGO_ENABLED=0 go build -o subtrace
+  url="${SUBTRACE_CONTROL_URL}"
+  if [[ "${url}" == "" ]]; then
+    url="https://control.subtrace.dev"
+  fi
+
+  CGO_ENABLED=0 go build -ldflags "-X 'subtrace.dev/config.ControlPlaneURI=${url}'" -o subtrace
 }
 
 cmd:debug() {
-  CGO_ENABLED=0 go build -ldflags "-X 'subtrace.dev/config.ControlPlaneURI=http://127.0.0.1:8080'" -o subtrace
+  SUBTRACE_CONTROL_URL=http://127.0.0.1:8080 cmd::subtrace
 }
 
 cmd:proto() {
