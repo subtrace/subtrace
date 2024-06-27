@@ -26,6 +26,7 @@ cmd:clickhouse() {
         -u $(id -u):$(id -g) -e CLICKHOUSE_UID=0 -e CLICKHOUSE_GID=0 \
         -p 127.0.0.1:8123:8123 \
         -p 127.0.0.1:9000:9000 \
+        -e CLICKHOUSE_DB=subtrace \
         -v subtrace_clickhouse:/var/lib/clickhouse/ \
         -v ${format_schemas_dir}:/var/lib/clickhouse/format_schemas/:rw \
         clickhouse/clickhouse-server:23
