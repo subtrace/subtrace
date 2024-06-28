@@ -94,7 +94,7 @@ func (c *Command) initClickhouse(ctx context.Context) error {
 		return fmt.Errorf("create client: %w", err)
 	}
 
-	applied, err := client.ApplyMigrations(ctx)
+	old, applied, err := client.ApplyMigrations(ctx)
 	if err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
@@ -106,6 +106,18 @@ func (c *Command) initClickhouse(ctx context.Context) error {
 	}
 
 	c.clickhouse = client
+
+	switch strings.ToLower(os.Getenv("SUBTRACE_SEED_DATABASE")) {
+	case "y", "yes", "true", "t", "1":
+		if old == 0 {
+			if err := c.addClickhouseColumns(ctx, tunnel.EventFields); err != nil {
+				return fmt.Errorf("seed clickhouse: add columns: %w", err)
+			}
+			if err := c.seedClickhouseSampleData(ctx); err != nil {
+				return fmt.Errorf("seed clickhouse: insert sample data: %w", err)
+			}
+		}
+	}
 	return nil
 }
 
