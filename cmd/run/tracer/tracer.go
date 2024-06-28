@@ -14,7 +14,6 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 	"nhooyr.io/websocket"
 	"subtrace.dev/event"
 	"subtrace.dev/rpc"
@@ -84,40 +83,6 @@ func (b *block) insert(ev *event.Event) bool {
 	return true
 }
 
-var cachedEventFields []*tunnel.EventField
-
-func initCachedEventColumns() error {
-	desc := ((*event.Event)(nil)).ProtoReflect().Descriptor()
-	for i := 0; i < desc.Fields().Len(); i++ {
-		field := desc.Fields().Get(i)
-		switch field.Kind() {
-		case
-			protoreflect.BoolKind,
-			protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind,
-			protoreflect.Uint32Kind, protoreflect.Fixed32Kind,
-			protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind,
-			protoreflect.Uint64Kind, protoreflect.Fixed64Kind,
-			protoreflect.StringKind:
-			if field.IsList() {
-				return fmt.Errorf("tag %d: %s: lists unsupported", field.Number(), field.Name())
-			}
-			cachedEventFields = append(cachedEventFields, &tunnel.EventField{
-				Type: int32(field.Kind()),
-				Tag:  int32(field.Number()),
-			})
-		default:
-			return fmt.Errorf("tag %d: %s: unsupported kind %q", field.Number(), field.Name(), field.Kind().String())
-		}
-	}
-	return nil
-}
-
-func init() {
-	if err := initCachedEventColumns(); err != nil {
-		panic(fmt.Errorf("init event columns: %w", err))
-	}
-}
-
 func initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string) (_ *websocket.Conn, finalErr error) {
 	slog.Debug("initializing tunnel session", "tunnelID", tunnelID, "role", tunnel.Role_INSERT)
 
@@ -147,7 +112,7 @@ func initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string) (_ *we
 		}
 	}()
 
-	b, err := proto.Marshal(&tunnel.ClientHello{EventFields: cachedEventFields})
+	b, err := proto.Marshal(&tunnel.ClientHello{EventFields: tunnel.EventFields})
 	if err != nil {
 		return nil, fmt.Errorf("client hello: marshal: %w", err)
 	}
