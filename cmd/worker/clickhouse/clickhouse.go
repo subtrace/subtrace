@@ -74,22 +74,31 @@ func New(ctx context.Context, host string) (*Client, error) {
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-func (c *Client) ApplyMigrations(ctx context.Context) (int, error) {
+// ApplyMigrations applies all previously unapplied migrations. If successful,
+// it returns the number of migrations previously applied (old) and the number
+// of newly applied migrations.
+func (c *Client) ApplyMigrations(ctx context.Context) (old int, applied int, _ error) {
 	if err := c.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS migrations (
 			file String PRIMARY KEY,
 			insert_time DateTime64(6, 'UTC') NOT NULL,
 		) ENGINE = MergeTree ORDER BY file;
 	`); err != nil {
-		return 0, fmt.Errorf("CREATE TABLE migrations: %w", err)
+		return 0, 0, fmt.Errorf("CREATE TABLE migrations: %w", err)
 	}
 
 	files, err := migrations.ReadDir("migrations")
 	if err != nil {
-		return 0, fmt.Errorf("read migrations dir: %w", err)
+		return 0, 0, fmt.Errorf("read migrations dir: %w", err)
 	}
 
-	applied := 0
+	var count uint64
+	if err := c.QueryRow(ctx, `SELECT COUNT(*) FROM migrations;`).Scan(&count); err != nil {
+		return 0, 0, fmt.Errorf("SELECT migrations: %w", err)
+	}
+
+	old = int(count)
+
 	for _, f := range files {
 		var exists bool
 		if err := c.QueryRow(ctx, `
@@ -97,7 +106,7 @@ func (c *Client) ApplyMigrations(ctx context.Context) (int, error) {
 			FROM migrations
 			WHERE file = $1;
 		`, f.Name()).Scan(&exists); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return applied, fmt.Errorf("SELECT %s: %w", f.Name(), err)
+			return old, applied, fmt.Errorf("SELECT %s: %w", f.Name(), err)
 		}
 		if exists {
 			continue
@@ -107,21 +116,21 @@ func (c *Client) ApplyMigrations(ctx context.Context) (int, error) {
 
 		b, err := migrations.ReadFile(fmt.Sprintf("migrations/%s", f.Name()))
 		if err != nil {
-			return applied, fmt.Errorf("read %s: %w", f.Name(), err)
+			return old, applied, fmt.Errorf("read %s: %w", f.Name(), err)
 		}
 
 		if err := c.Exec(ctx, string(b)); err != nil {
-			return applied, fmt.Errorf("apply %s: %w", f.Name(), err)
+			return old, applied, fmt.Errorf("apply %s: %w", f.Name(), err)
 		}
 
 		if err := c.Exec(ctx, `
 			INSERT INTO migrations (file, insert_time)
 			VALUES ($1, $2);
 		`, f.Name(), time.Now().UTC()); err != nil {
-			return applied, fmt.Errorf("INSERT %s: %w", f.Name(), err)
+			return old, applied, fmt.Errorf("INSERT %s: %w", f.Name(), err)
 		}
 		applied++
 	}
 
-	return applied, nil
+	return old, applied, nil
 }
