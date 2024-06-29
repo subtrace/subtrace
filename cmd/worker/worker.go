@@ -82,7 +82,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	}
 
 	if err := c.loop(ctx); err != nil {
-		return fmt.Errorf("upload handler loop: %w", err)
+		return fmt.Errorf("tunnel handler loop: %w", err)
 	}
 
 	return nil
