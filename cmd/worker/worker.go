@@ -94,7 +94,7 @@ func (c *Command) initClickhouse(ctx context.Context) error {
 		return fmt.Errorf("create client: %w", err)
 	}
 
-	old, applied, err := client.ApplyMigrations(ctx)
+	applied, err := client.ApplyMigrations(ctx)
 	if err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
@@ -107,9 +107,15 @@ func (c *Command) initClickhouse(ctx context.Context) error {
 
 	c.clickhouse = client
 
-	switch strings.ToLower(os.Getenv("SUBTRACE_SEED_DATABASE")) {
+	switch strings.ToLower(os.Getenv("SUBTRACE_CLICKHOUSE_SEED_DATA")) {
 	case "y", "yes", "true", "t", "1":
-		if old == 0 {
+		empty, err := c.isEventsTableEmpty(ctx)
+		if err != nil {
+			return fmt.Errorf("seed clickhouse: check for empty table: %w", err)
+		}
+
+		if empty {
+			slog.Info("seeding clickhouse events table with sample data")
 			if err := c.addClickhouseColumns(ctx, tunnel.EventFields); err != nil {
 				return fmt.Errorf("seed clickhouse: add columns: %w", err)
 			}
@@ -282,7 +288,7 @@ func (c *Command) hasColumn(ctx context.Context, name string) (bool, error) {
 		FROM system.columns
 		WHERE database = 'subtrace' AND table = 'events' AND name = $1;
 	`, name).Scan(&count); err != nil {
-		return false, fmt.Errorf("SELECT system.columns: %w", err)
+		return false, fmt.Errorf("hasColumn: SELECT COUNT(*): %w", err)
 	}
 	return count > 0, nil
 }
@@ -352,6 +358,20 @@ func (c *Command) addClickhouseColumns(ctx context.Context, fields []*tunnel.Eve
 		return fmt.Errorf("DROP FORMAT SCHEMA CACHE: %w", err)
 	}
 	return nil
+}
+
+func (c *Command) isEventsTableEmpty(ctx context.Context) (bool, error) {
+	var columns uint64
+	if err := c.clickhouse.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM system.columns
+		WHERE (table = 'events') AND (database = 'subtrace')
+	`).Scan(&columns); err != nil {
+		return false, fmt.Errorf("isEventsTableEmpty: SELECT COUNT(*): %w", err)
+	}
+	// We expect only the insert_time column to be present when the table is initially created,
+	// see 2024-05-27-events.sql
+	return columns == 1, nil
 }
 
 func (c *Command) writeTunnelProto(ctx context.Context, tunnelID uuid.UUID, fields []*tunnel.EventField) (string, error) {
