@@ -5,8 +5,8 @@ on:
     branches: [ "master" ]
 
 jobs:
-  subtrace/subtrace:
-    name: subtrace/subtrace
+  subtrace:
+    name: subtrace
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -17,8 +17,8 @@ jobs:
     - name: docker tag
       run: docker tag "ghcr.io/subtrace/subtrace:${GITHUB_SHA}" ghcr.io/subtrace/subtrace:latest && docker push ghcr.io/subtrace/subtrace:latest
 
-  subtrace/worker:
-    name: subtrace/worker
+  worker:
+    name: worker
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
