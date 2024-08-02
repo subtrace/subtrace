@@ -20,12 +20,12 @@ type Client struct {
 	driver.Conn
 }
 
-func newClient(ctx context.Context, host string) (*Client, error) {
+func newClient(ctx context.Context, host string, database string) (*Client, error) {
 	// 9000 is the ClickHouse native protocol port
 	// ref: https://clickhouse.com/docs/en/guides/sre/network-ports
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr:        []string{fmt.Sprintf("%s:9000", host)},
-		Auth:        clickhouse.Auth{Database: "subtrace"},
+		Auth:        clickhouse.Auth{Database: database},
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {
@@ -45,10 +45,10 @@ func newClient(ctx context.Context, host string) (*Client, error) {
 	return &Client{Conn: conn}, nil
 }
 
-func New(ctx context.Context, host string) (*Client, error) {
+func New(ctx context.Context, host string, database string) (*Client, error) {
 	var lastErr error
 	for attempt := 1; attempt < 5; attempt++ {
-		c, err := newClient(ctx, host)
+		c, err := newClient(ctx, host, database)
 		if err == nil {
 			return c, nil
 		}
@@ -56,7 +56,7 @@ func New(ctx context.Context, host string) (*Client, error) {
 		lastErr = err
 		if attempt < 5 {
 			wait := time.Duration(1<<(attempt-1)) * time.Second
-			slog.Error("failed to connect to clickhouse, waiting and retrying", "err", err, "attempt", attempt, "wait", wait)
+			slog.Error("failed to connect to clickhouse, waiting and retrying", "host", host, "database", database, "err", err, "attempt", attempt, "wait", wait)
 
 			timer := time.NewTicker(wait)
 			select {
