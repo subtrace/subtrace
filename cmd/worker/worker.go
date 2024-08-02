@@ -37,6 +37,7 @@ type Command struct {
 	flags struct {
 		clickhouse struct {
 			host          string
+			database      string
 			formatSchemas string
 		}
 	}
@@ -56,6 +57,7 @@ func NewCommand() *ffcli.Command {
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
 	c.FlagSet.StringVar(&c.flags.clickhouse.host, "clickhouse-host", "localhost", "clickhouse host")
+	c.FlagSet.StringVar(&c.flags.clickhouse.database, "clickhouse-database", "subtrace", "clickhouse database")
 	c.FlagSet.StringVar(&c.flags.clickhouse.formatSchemas, "clickhouse-format-schemas", "/var/lib/clickhouse/format_schemas/", "clickhouse format schemas directory")
 
 	c.Options = []ff.Option{ff.WithEnvVarPrefix("SUBTRACE")}
@@ -89,7 +91,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 }
 
 func (c *Command) initClickhouse(ctx context.Context) error {
-	client, err := clickhouse.New(ctx, c.flags.clickhouse.host)
+	client, err := clickhouse.New(ctx, c.flags.clickhouse.host, c.flags.clickhouse.database)
 	if err != nil {
 		return fmt.Errorf("create client: %w", err)
 	}
