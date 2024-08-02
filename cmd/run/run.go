@@ -85,8 +85,8 @@ func ExtraHelp() string {
 		"  $ subtrace run -- curl https://subtrace.dev",
 		"",
 		"MORE",
-		"  https://subtrace.dev/docs",    // TODO
-		"  https://subtrace.dev/discord", // TODO
+		"  https://docs.subtrace.dev",
+		"  https://subtrace.dev/discord",
 		"",
 	}, "\n")
 }
