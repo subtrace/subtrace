@@ -3,4 +3,4 @@
 
 package config
 
-var ControlPlaneURI = "https://control.subtrace.dev"
+var ControlPlaneURI = "https://subtrace.dev"
