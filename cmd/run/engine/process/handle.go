@@ -129,10 +129,15 @@ func (p *Process) handleOpen(n *seccomp.Notif, dirfd int, pathAddr uintptr, flag
 	return nil
 }
 
-// handleFstat handles the stat(2), fstat(2) and fstatat(2) syscalls. We
-// intercept it to ensure that the file size of the system root CA store is
-// consistent with the ephemeral CA injection we do in the open(2) handler.
-func (p *Process) handleFstat(n *seccomp.Notif, dirfd int, pathAddr uintptr, bufAddr uintptr, flags int) error {
+// handleFstatat handles the fstatat(2) syscall. We intercept it to ensure that
+// the file size of the system root CA store is consistent with the ephemeral
+// CA injection we do in the open(2) handler.
+//
+// Note that we don't handle fstat(2) because it directly operates on an open
+// file descriptor.
+//
+// TODO: stat(2)
+func (p *Process) handleFstatat(n *seccomp.Notif, dirfd int, pathAddr uintptr, bufAddr uintptr, flags int) error {
 	path, errno, err := p.resolvePath(n, dirfd, pathAddr)
 	if err != nil {
 		return fmt.Errorf("resolve path: %w", err)
@@ -480,18 +485,14 @@ func init() {
 		return p.handleOpen(n, int(n.Args[0]), uintptr(n.Args[1]), int(n.Args[2]), int(n.Args[3]))
 	}
 
-	Handlers[unix.SYS_FSTAT] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleFstat(n, int(n.Args[0]), 0, uintptr(n.Args[1]), 0)
-	}
-
 	switch runtime.GOARCH {
 	case "amd64":
 		Handlers[syscalls.GetNumber("SYS_NEWFSTATAT")] = func(p *Process, n *seccomp.Notif) error {
-			return p.handleFstat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
+			return p.handleFstatat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
 		}
 	case "arm64":
 		Handlers[syscalls.GetNumber("SYS_FSTATAT")] = func(p *Process, n *seccomp.Notif) error {
-			return p.handleFstat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
+			return p.handleFstatat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
 		}
 	default:
 		panic(fmt.Sprintf("GOARCH=%s: unsupported", runtime.GOARCH))
