@@ -1,0 +1,26 @@
+name: build-branch
+
+on:
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  subtrace-binary:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+    - run: |
+        set -e
+
+        version=$(printf "b%03d" "$(git log --oneline | wc -l)")
+        echo "version=${version}"
+
+        for arch in amd64 arm64; do
+          echo "arch=${arch}"
+          GOARCH=${arch} time make subtrace
+          mv subtrace subtrace-${version}-linux-${arch}
+        done
+
+        echo "metadata:"
+        file subtrace-*
+        sha256sum subtrace-*
