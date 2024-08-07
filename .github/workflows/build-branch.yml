@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - run: |
         set -e
 
@@ -16,9 +18,9 @@ jobs:
         echo "version=${version}"
 
         for arch in amd64 arm64; do
-          echo "arch=${arch}"
+          echo "GOARCH=${arch} go build"
           GOARCH=${arch} time make subtrace
-          mv subtrace subtrace-${version}-linux-${arch}
+          mv subtrace subtrace-linux-${arch}
         done
 
         echo "metadata:"
