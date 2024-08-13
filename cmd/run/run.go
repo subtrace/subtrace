@@ -217,7 +217,11 @@ func (c *Command) ensureAsyncPreemptionHack() error {
 		environ = append(environ, "GODEBUG=asyncpreemptoff=1")
 		environ = append(environ, "SUBTRACE_ORIG_GODEBUG=<empty>")
 	}
-	if err := unix.Exec(os.Args[0], os.Args, environ); err != nil {
+	abspath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("executable: %w", err)
+	}
+	if err := unix.Exec(abspath, os.Args, environ); err != nil {
 		return fmt.Errorf("execve: %w", err)
 	}
 	return nil
