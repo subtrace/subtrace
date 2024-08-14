@@ -18,7 +18,7 @@ EOF
 COPY --from=build /go/src/subtrace/subtrace /usr/local/bin/subtrace
 
 RUN cat >/usr/local/bin/start_worker.sh <<EOF
-  clickhouse-server --daemon
+  clickhouse-server &
   export SUBTRACE_CLICKHOUSE_HOST=localhost
   export SUBTRACE_CLICKHOUSE_DATABASE=default
   export SUBTRACE_CLICKHOUSE_FORMAT_SCHEMAS=/var/lib/clickhouse/format_schemas
