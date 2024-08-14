@@ -3,11 +3,7 @@
 set -eo pipefail
 
 cmd:subtrace() {
-  if [[ "${SUBTRACE_CONTROL_URL}" != "" ]]; then
-    CGO_ENABLED=0 go build -ldflags "-X 'subtrace.dev/config.ControlPlaneURI=${SUBTRACE_CONTROL_URL}'" -o subtrace
-  else
-    CGO_ENABLED=0 go build -o subtrace
-  fi
+  CGO_ENABLED=0 go build -o subtrace
 }
 
 cmd:proto() {
