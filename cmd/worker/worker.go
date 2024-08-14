@@ -520,7 +520,7 @@ func (c *Command) proxyClickhouse(ctx context.Context, tunnelID uuid.UUID, role 
 		return 0, nil, nil, fmt.Errorf("create request: %w", err)
 	}
 
-	req.Header.Set("x-clickhouse-database", "subtrace")
+	req.Header.Set("x-clickhouse-database", c.flags.clickhouse.database)
 	req.Header.Set("x-clickhouse-format", "Protobuf")
 
 	resp, err := http.DefaultClient.Do(req)
