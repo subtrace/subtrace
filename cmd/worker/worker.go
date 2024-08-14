@@ -130,7 +130,7 @@ func (c *Command) initClickhouse(ctx context.Context) error {
 }
 
 func (c *Command) loop(ctx context.Context) error {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	first := make(chan struct{}, 1)
