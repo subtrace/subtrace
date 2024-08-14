@@ -9,10 +9,10 @@ RUN apt-get update && apt-get install -y ca-certificates curl
 
 ARG TARGETARCH
 RUN cat | bash - <<EOF
-  curl -sLO "https://packages.clickhouse.com/deb/pool/main/c/clickhouse/clickhouse-common-static_23.9.6.20_${TARGETARCH}.deb"
-  curl -sLO "https://packages.clickhouse.com/deb/pool/main/c/clickhouse/clickhouse-server_23.9.6.20_${TARGETARCH}.deb"
-  DEBIAN_FRONTEND=noninteractive apt install -y ./clickhouse-common-static_23.9.6.20_${TARGETARCH}.deb ./clickhouse-server_23.9.6.20_${TARGETARCH}.deb
-  rm ./clickhouse-common-static_23.9.6.20_${TARGETARCH}.deb ./clickhouse-server_23.9.6.20_${TARGETARCH}.deb
+  curl -sLO "https://packages.clickhouse.com/deb/pool/main/c/clickhouse/clickhouse-common-static_23.12.6.19_${TARGETARCH}.deb"
+  curl -sLO "https://packages.clickhouse.com/deb/pool/main/c/clickhouse/clickhouse-server_23.12.6.19_${TARGETARCH}.deb"
+  DEBIAN_FRONTEND=noninteractive apt install -y ./clickhouse-common-static_23.12.6.19_${TARGETARCH}.deb ./clickhouse-server_23.12.6.19_${TARGETARCH}.deb
+  rm ./clickhouse-common-static_23.12.6.19_${TARGETARCH}.deb ./clickhouse-server_23.12.6.19_${TARGETARCH}.deb
 EOF
 
 COPY --from=build /go/src/subtrace/subtrace /usr/local/bin/subtrace
