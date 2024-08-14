@@ -285,11 +285,11 @@ func (c *Command) initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint s
 func (c *Command) hasColumn(ctx context.Context, name string) (bool, error) {
 	// TODO: cache the list of known columns
 	var count uint64
-	if err := c.clickhouse.QueryRow(ctx, `
+	if err := c.clickhouse.QueryRow(ctx, fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM system.columns
-		WHERE database = 'subtrace' AND table = 'events' AND name = $1;
-	`, name).Scan(&count); err != nil {
+		WHERE database = '%s' AND table = 'events' AND name = $1;
+	`, c.flags.clickhouse.database), name).Scan(&count); err != nil {
 		return false, fmt.Errorf("hasColumn: SELECT COUNT(*): %w", err)
 	}
 	return count > 0, nil
@@ -342,9 +342,9 @@ func (c *Command) addClickhouseColumns(ctx context.Context, fields []*tunnel.Eve
 			return fmt.Errorf("tag %d: unknown type %q", f.Tag, f.Type)
 		}
 		if err := c.clickhouse.Exec(ctx, fmt.Sprintf(`
-			ALTER TABLE subtrace.events
+			ALTER TABLE %s.events
 			ADD COLUMN IF NOT EXISTS T%08x %s
-		`, f.Tag, typ)); err != nil {
+		`, c.flags.clickhouse.database, f.Tag, typ)); err != nil {
 			errs = append(errs, fmt.Errorf("add field %d (%s): %w", f.Tag, protoreflect.Kind(f.Type).String(), err))
 		}
 	}
@@ -364,11 +364,11 @@ func (c *Command) addClickhouseColumns(ctx context.Context, fields []*tunnel.Eve
 
 func (c *Command) isEventsTableEmpty(ctx context.Context) (bool, error) {
 	var columns uint64
-	if err := c.clickhouse.QueryRow(ctx, `
+	if err := c.clickhouse.QueryRow(ctx, fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM system.columns
-		WHERE (table = 'events') AND (database = 'subtrace')
-	`).Scan(&columns); err != nil {
+		WHERE (database = '%s') AND (table = 'events')
+	`, c.flags.clickhouse.database)).Scan(&columns); err != nil {
 		return false, fmt.Errorf("isEventsTableEmpty: SELECT COUNT(*): %w", err)
 	}
 	// We expect only the insert_time column to be present when the table is initially created,
