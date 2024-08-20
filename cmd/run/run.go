@@ -31,6 +31,7 @@ import (
 	"subtrace.dev/cmd/run/kernel"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/cmd/run/tracer"
+	"subtrace.dev/cmd/version"
 	"subtrace.dev/logging"
 )
 
@@ -105,6 +106,8 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	if val := os.Getenv("SUBTRACE_TOKEN"); val == "" {
 		return fmt.Errorf("SUBTRACE_TOKEN is empty")
 	}
+
+	slog.Info("starting tracer", "version", version.Version, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
 
 	switch os.Getenv("_SUBTRACE_CHILD") {
 	case "": // parent
@@ -248,7 +251,7 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		return 0, fmt.Errorf("ensure asyncpreemptoff=1: %w", err)
 	}
 
-	slog.Debug("starting subtrace parent", "pid", os.Getpid())
+	slog.Debug("starting tracer parent", "pid", os.Getpid())
 
 	if _, _, err := kernel.CheckVersion(minKernelVersion, true); err != nil {
 		return 0, fmt.Errorf("check kernel version: %w", err)
