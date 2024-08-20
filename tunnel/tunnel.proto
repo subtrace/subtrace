@@ -12,7 +12,7 @@ enum Role {
 // POST /api/CreateTunnel
 message Create {
   message Request {
-    optional string project_id = 1;
+    optional string namespace_id = 1;
     Role role = 2;
   }
 
