@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,7 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -25,9 +26,9 @@ import (
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 	"nhooyr.io/websocket"
 	"subtrace.dev/cmd/worker/clickhouse"
+	"subtrace.dev/event"
 	"subtrace.dev/logging"
 	"subtrace.dev/rpc"
 	"subtrace.dev/tunnel"
@@ -90,6 +91,9 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	return nil
 }
 
+//go:embed seed.sql
+var seed string
+
 func (c *Command) initClickhouse(ctx context.Context) error {
 	client, err := clickhouse.New(ctx, c.flags.clickhouse.host, c.flags.clickhouse.database)
 	if err != nil {
@@ -111,19 +115,27 @@ func (c *Command) initClickhouse(ctx context.Context) error {
 
 	switch strings.ToLower(os.Getenv("SUBTRACE_CLICKHOUSE_SEED_DATA")) {
 	case "y", "yes", "true", "t", "1":
-		empty, err := c.isEventsTableEmpty(ctx)
-		if err != nil {
-			return fmt.Errorf("seed clickhouse: check for empty table: %w", err)
+		var count uint64
+		if err := c.clickhouse.QueryRow(ctx, fmt.Sprintf(`
+			SELECT COUNT(*)
+			FROM %s.events;
+		`, c.flags.clickhouse.database)).Scan(&count); err != nil {
+			return fmt.Errorf("seed clickhouse: SELECT events: %w", err)
 		}
 
-		if empty {
+		if count == 0 {
 			slog.Info("seeding clickhouse events table with sample data")
-			if err := c.addClickhouseColumns(ctx, tunnel.EventFields); err != nil {
+			var cols []string
+			for col := range event.KnownFields_value {
+				cols = append(cols, col)
+			}
+			if err := c.ensureClickhouseColumns(ctx, cols); err != nil {
 				return fmt.Errorf("seed clickhouse: add columns: %w", err)
 			}
-			if err := c.seedClickhouseSampleData(ctx); err != nil {
-				return fmt.Errorf("seed clickhouse: insert sample data: %w", err)
+			if err := c.clickhouse.Exec(ctx, seed); err != nil {
+				return fmt.Errorf("seed clickhouse: insert data: %w", err)
 			}
+			slog.Info("seeded clickhouse events table with sample data")
 		}
 	}
 	return nil
@@ -188,7 +200,7 @@ func (c *Command) handleTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint
 	start := time.Now()
 	defer func() { slog.Debug("closing tunnel", "tunnelID", tunnelID, "time", time.Since(start)) }()
 
-	conn, path, err := c.initTunnel(ctx, tunnelID, endpoint, role)
+	conn, err := c.initTunnel(ctx, tunnelID, endpoint, role)
 	if err != nil {
 		var wsErr websocket.CloseError
 		if errors.As(err, &wsErr) && wsErr.Code == websocket.StatusGoingAway {
@@ -202,7 +214,6 @@ func (c *Command) handleTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint
 		return fmt.Errorf("init tunnel: %w", err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
-	defer os.Remove(path)
 
 	if err := c.loopTunnel(ctx, tunnelID, conn, role); err != nil && !strings.Contains(err.Error(), "StatusNormalClosure") {
 		return fmt.Errorf("loop tunnel: %w", err)
@@ -210,12 +221,12 @@ func (c *Command) handleTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint
 	return nil
 }
 
-func (c *Command) initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string, role tunnel.Role) (_ *websocket.Conn, _ string, finalErr error) {
+func (c *Command) initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string, role tunnel.Role) (_ *websocket.Conn, finalErr error) {
 	slog.Debug("initializing tunnel session", "tunnelID", tunnelID, "role", role)
 
 	conn, resp, err := websocket.Dial(ctx, endpoint, nil)
 	if err != nil {
-		return nil, "", fmt.Errorf("dial: %w", err)
+		return nil, fmt.Errorf("dial: %w", err)
 	}
 	if resp.Body != nil {
 		defer resp.Body.Close()
@@ -230,7 +241,7 @@ func (c *Command) initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint s
 				err = fmt.Errorf("%w: %s", err, string(b))
 			}
 		}
-		return nil, "", err
+		return nil, err
 	}
 
 	defer func() {
@@ -239,47 +250,16 @@ func (c *Command) initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint s
 		}
 	}()
 
-	var clientHello tunnel.ClientHello
-	typ, b, err := conn.Read(ctx)
-	if err != nil {
-		return nil, "", fmt.Errorf("client hello: read: %w", err)
-	}
-	if typ != websocket.MessageBinary {
-		return nil, "", fmt.Errorf("client hello: unexpected websocket message type %d", typ)
-	}
-	if err := proto.Unmarshal(b, &clientHello); err != nil {
-		return nil, "", fmt.Errorf("client hello: unmarshal: %w", err)
-	}
-
 	switch role {
 	case tunnel.Role_INSERT:
-		if err := c.ensureClickhouseColumns(ctx, clientHello.EventFields); err != nil {
-			return nil, "", fmt.Errorf("client hello: ensure event columns: %w", err)
-		}
+		// TODO: checks
 	case tunnel.Role_SELECT:
+		// TODO: checks
 	default:
-		return nil, "", fmt.Errorf("client hello: unknown role: %w", err)
+		return nil, fmt.Errorf("client hello: unknown role: %w", err)
 	}
 
-	path, err := c.writeTunnelProto(ctx, tunnelID, clientHello.EventFields)
-	if err != nil {
-		return nil, "", fmt.Errorf("client hello: write tunnel protobuf schema: %w", err)
-	}
-	defer func() {
-		if finalErr != nil {
-			os.Remove(path)
-		}
-	}()
-
-	b, err = proto.Marshal(&tunnel.ServerHello{})
-	if err != nil {
-		return nil, path, fmt.Errorf("server hello: marshal: %w", err)
-	}
-	if err := conn.Write(ctx, websocket.MessageBinary, b); err != nil {
-		return nil, path, fmt.Errorf("server hello: write: %w", err)
-	}
-
-	return conn, path, nil
+	return conn, nil
 }
 
 func (c *Command) hasColumn(ctx context.Context, name string) (bool, error) {
@@ -295,21 +275,20 @@ func (c *Command) hasColumn(ctx context.Context, name string) (bool, error) {
 	return count > 0, nil
 }
 
-func (c *Command) ensureClickhouseColumns(ctx context.Context, fields []*tunnel.EventField) error {
-	var add []*tunnel.EventField
-	for _, f := range fields {
-		exists, err := c.hasColumn(ctx, fmt.Sprintf("T%08x", f.Tag))
+func (c *Command) ensureClickhouseColumns(ctx context.Context, cols []string) error {
+	var add []string
+	for _, col := range cols {
+		exists, err := c.hasColumn(ctx, col)
 		if err != nil {
 			return fmt.Errorf("check if column exists: %w", err)
 		}
 		if !exists {
-			add = append(add, f)
+			add = append(add, col)
 			continue
 		}
 	}
 
 	if len(add) > 0 {
-		sort.Slice(fields, func(i, j int) bool { return fields[i].Tag < fields[j].Tag })
 		if err := c.addClickhouseColumns(ctx, add); err != nil {
 			return fmt.Errorf("add %d columns: %w", len(add), err)
 		}
@@ -317,90 +296,72 @@ func (c *Command) ensureClickhouseColumns(ctx context.Context, fields []*tunnel.
 	return nil
 }
 
-func (c *Command) addClickhouseColumns(ctx context.Context, fields []*tunnel.EventField) error {
-	if len(fields) == 0 {
-		return nil
+func (c *Command) rebuildMaterializedView(ctx context.Context) error {
+	rows, err := c.clickhouse.Query(ctx, fmt.Sprintf(`
+		SELECT name
+		FROM system.columns
+		WHERE database = '%s' AND table = 'events';
+	`, c.flags.clickhouse.database))
+	if err != nil {
+		return fmt.Errorf("SELECT system.columns: %w", err)
 	}
+	defer rows.Close()
 
-	var errs []error
-	for _, f := range fields {
-		var typ string
-		switch protoreflect.Kind(f.Type) {
-		case protoreflect.BoolKind:
-			typ = "Bool"
-		case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
-			typ = "Int32"
-		case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
-			typ = "UInt32"
-		case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
-			typ = "Int64"
-		case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
-			typ = "UInt64"
-		case protoreflect.StringKind:
-			typ = "String"
+	var cols []string
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err != nil {
+			return fmt.Errorf("scan system.columns: %w", err)
+		}
+
+		switch col {
+		case "time":
+			cols = append(cols, "coalesce(parseDateTime64BestEffort(tags['time'], 9, 'UTC'), now64(9)) AS `time`")
+		case "event_id":
+			cols = append(cols, "coalesce(toUUIDOrNull(tags['event_id']), generateUUIDv4()) AS `event_id`")
 		default:
-			return fmt.Errorf("tag %d: unknown type %q", f.Tag, f.Type)
+			cols = append(cols, fmt.Sprintf("tags['%s'] AS `%s`", col, col))
 		}
-		if err := c.clickhouse.Exec(ctx, fmt.Sprintf(`
-			ALTER TABLE %s.events
-			ADD COLUMN IF NOT EXISTS T%08x %s
-		`, c.flags.clickhouse.database, f.Tag, typ)); err != nil {
-			errs = append(errs, fmt.Errorf("add field %d (%s): %w", f.Tag, protoreflect.Kind(f.Type).String(), err))
-		}
-	}
-	if err := errors.Join(errs...); err != nil {
-		return fmt.Errorf("ALTER TABLE ADD COLUMN: %w", err)
 	}
 
-	// Without dropping the format schema cache explicitly, Clickhouse ignores
-	// newly fields when doing INSERTs even if the column exists.
-	if err := c.clickhouse.Exec(ctx, `
-		SYSTEM DROP FORMAT SCHEMA CACHE
-	`); err != nil {
-		return fmt.Errorf("DROP FORMAT SCHEMA CACHE: %w", err)
+	if err := c.clickhouse.Exec(ctx, fmt.Sprintf(`
+		ALTER TABLE %s.ingest_mv MODIFY QUERY
+		SELECT %s 
+		FROM (SELECT mapReverseSort(extractKeyValuePairsWithEscaping(line, '=', ' ', '"')) AS tags FROM ingest)
+	`, c.flags.clickhouse.database, strings.Join(cols, ", "))); err != nil {
+		return fmt.Errorf("ALTER TABLE: %w", err)
 	}
 	return nil
 }
 
-func (c *Command) isEventsTableEmpty(ctx context.Context) (bool, error) {
-	var columns uint64
-	if err := c.clickhouse.QueryRow(ctx, fmt.Sprintf(`
-		SELECT COUNT(*)
-		FROM system.columns
-		WHERE (database = '%s') AND (table = 'events')
-	`, c.flags.clickhouse.database)).Scan(&columns); err != nil {
-		return false, fmt.Errorf("isEventsTableEmpty: SELECT COUNT(*): %w", err)
+func (c *Command) addClickhouseColumns(ctx context.Context, cols []string) error {
+	if len(cols) == 0 {
+		return nil
 	}
-	// We expect only the insert_time column to be present when the table is initially created,
-	// see 2024-05-27-events.sql
-	return columns == 1, nil
-}
 
-func (c *Command) writeTunnelProto(ctx context.Context, tunnelID uuid.UUID, fields []*tunnel.EventField) (string, error) {
-	path := filepath.Join(c.flags.clickhouse.formatSchemas, fmt.Sprintf("%s.proto", tunnelID))
+	slog.Info("adding new clickhouse columns", "columns", len(cols))
 
-	f, err := os.Create(path)
-	if err != nil {
-		return "", fmt.Errorf("create file: %w", err)
-	}
-	defer f.Close()
-
-	w := bufio.NewWriter(f)
-	defer w.Flush()
-
-	fmt.Fprintf(w, "syntax = \"proto3\";\n")
-	fmt.Fprintf(w, "\n")
-	fmt.Fprintf(w, "message Event {\n")
-	for _, f := range fields {
-		prefix := "  optional "
-		if f.Tag == 1 || f.Tag == 2 || f.Tag == 3 {
-			prefix = "  " // event_id, timestamp, type
+	var add []string
+	for _, col := range cols {
+		switch col {
+		case "http_duration":
+			add = append(add, fmt.Sprintf("ADD COLUMN IF NOT EXISTS `%s` UInt64", col))
+		default:
+			add = append(add, fmt.Sprintf("ADD COLUMN IF NOT EXISTS `%s` String CODEC(ZSTD(1))", col))
+			add = append(add, fmt.Sprintf("ADD INDEX IF NOT EXISTS `index_%s` `%s` TYPE bloom_filter(0.01) GRANULARITY 1", col, col))
 		}
-		fmt.Fprintf(w, "%s%s T%08x = %d;\n", prefix, protoreflect.Kind(f.Type).String(), f.Tag, f.Tag)
 	}
-	fmt.Fprintf(w, "}\n")
 
-	return path, nil
+	if err := c.clickhouse.Exec(ctx, fmt.Sprintf(`
+		ALTER TABLE %s.events %s
+	`, c.flags.clickhouse.database, strings.Join(add, ", "))); err != nil {
+		return fmt.Errorf("ALTER TABLE: %w", err)
+	}
+
+	if err := c.rebuildMaterializedView(ctx); err != nil {
+		return fmt.Errorf("rebuild materialized view: %w", err)
+	}
+	return nil
 }
 
 func (c *Command) loopTunnel(ctx context.Context, tunnelID uuid.UUID, conn *websocket.Conn, role tunnel.Role) error {
@@ -421,16 +382,12 @@ func (c *Command) loopTunnel(ctx context.Context, tunnelID uuid.UUID, conn *webs
 		default:
 		}
 
-		var query tunnel.Query
 		typ, b, err := conn.Read(ctx)
 		if err != nil {
 			return fmt.Errorf("query: read: %w", err)
 		}
 		if typ != websocket.MessageBinary {
 			return fmt.Errorf("query: unexpected websocket message type %d", typ)
-		}
-		if err := proto.Unmarshal(b, &query); err != nil {
-			return fmt.Errorf("query: unmarshal: %w", err)
 		}
 
 		if !mu.TryLock() {
@@ -450,35 +407,55 @@ func (c *Command) loopTunnel(ctx context.Context, tunnelID uuid.UUID, conn *webs
 
 		go func() {
 			defer mu.Unlock()
-			if err := c.handleQuery(childCtx, tunnelID, conn, role, &query); err != nil {
-				slog.Error("failed to handle query", "tunnelID", tunnelID, "queryID", query.TunnelQueryId, "err", err)
+			if err := c.handleQuery(childCtx, tunnelID, conn, role, b); err != nil {
+				slog.Error("failed to handle query", "tunnelID", tunnelID, "err", err)
 				return
 			}
 		}()
 	}
 }
 
-func (c *Command) handleQuery(ctx context.Context, tunnelID uuid.UUID, conn *websocket.Conn, role tunnel.Role, query *tunnel.Query) error {
-	result := &tunnel.Result{TunnelQueryId: query.TunnelQueryId}
-
-	status, headers, data, err := c.proxyClickhouse(ctx, tunnelID, role, query)
-	switch {
-	case err != nil:
-		result.TunnelError = fmt.Errorf("failed to proxy query to clickhouse: %w", err).Error()
-	case status == http.StatusOK:
-		result.ClickhouseQueryId = headers.Get("x-clickhouse-query-id")
-		result.Data = data
-	default:
-		err := fmt.Errorf("clickhouse returned status %d", status)
-		if len(data) != 0 {
-			err = fmt.Errorf("%w: %s", err, string(data))
-		} else if exception := headers.Get("x-clickhouse-exception-code"); exception != "" {
-			err = fmt.Errorf("%w: clickhouse exception code %s", err, exception)
-		} else {
-			err = fmt.Errorf("%w: <empty error message>", err)
+func (c *Command) handleQuery(ctx context.Context, tunnelID uuid.UUID, conn *websocket.Conn, role tunnel.Role, b []byte) error {
+	var result *tunnel.Result
+	switch role {
+	case tunnel.Role_INSERT:
+		query := new(tunnel.Insert)
+		if err := proto.Unmarshal(b, query); err != nil {
+			return fmt.Errorf("unmarshal INSERT: %w", err)
 		}
-		result.ClickhouseQueryId = headers.Get("x-clickhouse-query-id")
-		result.ClickhouseError = err.Error()
+
+		data := []string{}
+		cols := make(map[string]bool)
+		rexp := regexp.MustCompile(`[a-zA-Z0-9_]+=`)
+		for _, event := range query.Events {
+			data = append(data, fmt.Sprintf("('%s')", event))
+			for _, col := range rexp.FindAllString(event, -1) {
+				cols[col[:len(col)-1]] = true
+			}
+		}
+
+		var ensure []string
+		for col := range cols {
+			ensure = append(ensure, col)
+		}
+
+		slog.Debug("ensuring columns exist before INSERT", "tunnelID", tunnelID, "queryID", query.TunnelQueryId, "columns", cols)
+		if err := c.ensureClickhouseColumns(ctx, ensure); err != nil {
+			result = &tunnel.Result{
+				TunnelQueryId: query.TunnelQueryId,
+				TunnelError:   fmt.Errorf("ensure columns: %w", err).Error(),
+			}
+			break
+		}
+
+		result = c.proxyClickhouse(ctx, tunnelID, query.TunnelQueryId, `INSERT INTO ingest VALUES`, bytes.NewBufferString(strings.Join(data, ",\n")))
+
+	case tunnel.Role_SELECT:
+		query := new(tunnel.Select)
+		if err := proto.Unmarshal(b, query); err != nil {
+			return fmt.Errorf("unmarshal SELECT: %w", err)
+		}
+		result = c.proxyClickhouse(ctx, tunnelID, query.TunnelQueryId, query.SqlStatement, nil)
 	}
 
 	b, err := proto.Marshal(result)
@@ -491,33 +468,33 @@ func (c *Command) handleQuery(ctx context.Context, tunnelID uuid.UUID, conn *web
 	return nil
 }
 
-func (c *Command) proxyClickhouse(ctx context.Context, tunnelID uuid.UUID, role tunnel.Role, query *tunnel.Query) (int, http.Header, []byte, error) {
+func (c *Command) proxyClickhouse(ctx context.Context, tunnelID uuid.UUID, tunnelQueryID string, stmt string, data io.Reader) *tunnel.Result {
 	const maxResultBytes = 64 << 20
 
 	// 8123 is the ClickHouse HTTP default port
 	// ref: https://clickhouse.com/docs/en/guides/sre/network-ports
 	u, err := url.Parse(fmt.Sprintf("http://%s:8123/", c.flags.clickhouse.host))
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("parse clickhouse HTTP interface endpoint: %w", err)
+		return &tunnel.Result{
+			TunnelQueryId: tunnelQueryID,
+			TunnelError:   fmt.Errorf("parse clickhouse HTTP interface endpoint: %w", err).Error(),
+		}
 	}
 
 	q := u.Query()
-	q.Set("query", query.SqlStatement)
+	q.Set("query", stmt)
 	q.Set("format_schema", fmt.Sprintf("%s:Event", tunnelID.String()))
 	q.Set("max_result_bytes", fmt.Sprintf("%d", maxResultBytes))
 	q.Set("buffer_size", fmt.Sprintf("%d", maxResultBytes))
 	q.Set("wait_end_of_query", "1")
-	switch role {
-	case tunnel.Role_INSERT:
-		// TODO: q.Set("role", "subtrace_tunnel_insert")
-	case tunnel.Role_SELECT:
-		// TODO: q.Set("role", "subtrace_tunnel_select")
-	}
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", u.String(), bytes.NewBuffer(query.Data))
+	req, err := http.NewRequestWithContext(ctx, "POST", u.String(), data)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("create request: %w", err)
+		return &tunnel.Result{
+			TunnelQueryId: tunnelQueryID,
+			TunnelError:   fmt.Errorf("create request: %w", err).Error(),
+		}
 	}
 
 	req.Header.Set("x-clickhouse-database", c.flags.clickhouse.database)
@@ -525,13 +502,40 @@ func (c *Command) proxyClickhouse(ctx context.Context, tunnelID uuid.UUID, role 
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return 0, nil, nil, fmt.Errorf("do request: %w", err)
+		return &tunnel.Result{
+			TunnelQueryId: tunnelQueryID,
+			TunnelError:   fmt.Errorf("do request: %w", err).Error(),
+		}
 	}
 	defer resp.Body.Close()
 
-	b, err := io.ReadAll(io.LimitReader(bufio.NewReader(resp.Body), maxResultBytes))
-	if err != nil {
-		return resp.StatusCode, resp.Header, nil, fmt.Errorf("read body: %w", err)
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("clickhouse returned status %d", resp.StatusCode)
+		if msg, _ := io.ReadAll(io.LimitReader(bufio.NewReader(resp.Body), maxResultBytes)); len(msg) != 0 {
+			err = fmt.Errorf("%w: %s", err, string(msg))
+		} else if exception := resp.Header.Get("x-clickhouse-exception-code"); exception != "" {
+			err = fmt.Errorf("%w: clickhouse exception code %s", err, exception)
+		} else {
+			err = fmt.Errorf("%w: <empty error message>", err)
+		}
+		return &tunnel.Result{
+			TunnelQueryId:     tunnelQueryID,
+			ClickhouseQueryId: resp.Header.Get("x-clickhouse-query-id"),
+			ClickhouseError:   fmt.Errorf("do request: %w", err).Error(),
+		}
 	}
-	return resp.StatusCode, resp.Header, b, nil
+
+	result, err := io.ReadAll(io.LimitReader(bufio.NewReader(resp.Body), maxResultBytes))
+	if err != nil {
+		return &tunnel.Result{
+			TunnelQueryId:     tunnelQueryID,
+			ClickhouseQueryId: resp.Header.Get("x-clickhouse-query-id"),
+			TunnelError:       fmt.Errorf("read result body: %w", err).Error(),
+		}
+	}
+
+	return &tunnel.Result{
+		TunnelQueryId: tunnelQueryID,
+		Result:        string(result),
+	}
 }

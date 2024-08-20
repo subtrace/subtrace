@@ -4,20 +4,19 @@ package subtrace.event;
 
 option go_package = "subtrace.dev/event";
 
-message Event {
-  string event_id   = 0x00000001;
-  int64  timestamp  = 0x00000002;
-  string type       = 0x00000003;
-
-  optional int64  pid                   = 0x00000004;
-  optional string hostname              = 0x00000005;
-  optional string tls_server_name       = 0x00000006;
-  optional string http_version          = 0x00000007;
-  optional bool   http_is_outgoing      = 0x00000008;
-  optional string http_client_addr      = 0x00000009;
-  optional string http_server_addr      = 0x0000000a;
-  optional int64  http_duration         = 0x0000000b;
-  optional string http_req_method       = 0x0000000c;
-  optional string http_req_path         = 0x0000000d;
-  optional int32  http_resp_status_code = 0x0000000e;
+enum KnownFields {
+  time                  = 0;
+  event_id              = 1;
+  service               = 2;
+  hostname              = 3;
+  pid                   = 4;
+  tls_server_name       = 5;
+  http_version          = 6;
+  http_is_outgoing      = 7;
+  http_client_addr      = 8;
+  http_server_addr      = 9;
+  http_duration         = 10;
+  http_req_method       = 11;
+  http_req_path         = 12;
+  http_resp_status_code = 13;
 }

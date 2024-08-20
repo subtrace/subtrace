@@ -41,23 +41,14 @@ message ListOpen {
   }
 }
 
-message EventField {
-  int32 type = 1;
-  int32 tag = 2;
+message Insert {
+  string tunnel_query_id = 1;
+  repeated string events = 2;
 }
 
-message ClientHello {
-  repeated EventField event_fields = 1;
-}
-
-message ServerHello {
-  repeated EventField event_fields = 1;
-}
-
-message Query {
+message Select {
   string tunnel_query_id = 1;
   string sql_statement = 2;
-  optional bytes data = 3;
 }
 
 message Result {
@@ -65,5 +56,5 @@ message Result {
   string tunnel_error = 2;
   string clickhouse_query_id = 3;
   string clickhouse_error = 4;
-  bytes data = 5;
+  string result = 5;
 }
