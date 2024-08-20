@@ -15,6 +15,7 @@ import (
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"subtrace.dev/cmd/run"
 	"subtrace.dev/cmd/worker"
+	"subtrace.dev/cmd/version"
 )
 
 func main() {
@@ -27,6 +28,7 @@ func main() {
 
 	c.Subcommands = append(c.Subcommands, run.NewCommand())
 	c.Subcommands = append(c.Subcommands, worker.NewCommand())
+	c.Subcommands = append(c.Subcommands, version.NewCommand())
 
 	c.FlagSet = flag.NewFlagSet("subtrace", flag.ContinueOnError)
 	c.FlagSet.SetOutput(os.Stdout)

@@ -27,6 +27,7 @@ import (
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
+	"subtrace.dev/cmd/version"
 	"subtrace.dev/cmd/worker/clickhouse"
 	"subtrace.dev/event"
 	"subtrace.dev/logging"
@@ -73,7 +74,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		return fmt.Errorf("SUBTRACE_TOKEN is empty")
 	}
 
-	slog.Info("starting worker node")
+	slog.Info("starting worker node", "version", version.Version, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
 
 	if err := c.initClickhouse(ctx); err != nil {
 		return fmt.Errorf("init clickhouse: %w", err)
