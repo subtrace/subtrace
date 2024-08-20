@@ -14,16 +14,14 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
-	"google.golang.org/protobuf/proto"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/cmd/run/tracer"
-	"subtrace.dev/event"
 )
 
 var hostname string
@@ -39,7 +37,6 @@ type proxy struct {
 	begin         time.Time
 	isOutgoing    bool
 	tlsServerName *string
-	event         *event.Event
 }
 
 func (p *proxy) Close() error {
@@ -280,26 +277,32 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				}()
 			}
 
-			ev := new(event.Event)
-			ev.EventId = uuid.NewString()
-			ev.Timestamp = time.Now().UnixNano()
-			ev.Type = "http"
+			begin := time.Now()
 
-			ev.Pid = proto.Int64(int64(os.Getpid()))
-			ev.Hostname = proto.String(hostname)
+			var ev []string
 
-			ev.HttpIsOutgoing = proto.Bool(p.isOutgoing)
-			ev.HttpClientAddr = proto.String(p.process.RemoteAddr().String())
-			ev.HttpServerAddr = proto.String(p.external.RemoteAddr().String())
-			if !p.isOutgoing {
-				ev.HttpClientAddr, ev.HttpServerAddr = ev.HttpServerAddr, ev.HttpClientAddr
+			ev = append(ev, fmt.Sprintf("time=%s", time.Now().UTC().Format(time.RFC3339Nano)))
+			ev = append(ev, os.Getenv("SUBTRACE_TAGS"))
+			ev = append(ev, req.Header.Get("x-subtrace-tags"))
+
+			ev = append(ev, fmt.Sprintf("hostname=%q", hostname))
+			ev = append(ev, fmt.Sprintf("pid=%d", os.Getpid()))
+
+			if p.tlsServerName != nil && *p.tlsServerName != "" {
+				ev = append(ev, fmt.Sprintf("tls_server_name=%q", *p.tlsServerName))
 			}
 
-			ev.TlsServerName = p.tlsServerName
-
-			ev.HttpVersion = proto.String(req.Proto)
-			ev.HttpReqMethod = proto.String(req.Method)
-			ev.HttpReqPath = proto.String(req.URL.Path)
+			ev = append(ev, fmt.Sprintf("http_version=%q", req.Proto))
+			ev = append(ev, fmt.Sprintf("http_is_outgoing=%v", p.isOutgoing))
+			ev = append(ev, fmt.Sprintf("http_req_method=%q", req.Method))
+			ev = append(ev, fmt.Sprintf("http_req_path=%q", req.URL.Path))
+			if p.isOutgoing {
+				ev = append(ev, fmt.Sprintf("http_client_addr=%q", p.process.RemoteAddr().String()))
+				ev = append(ev, fmt.Sprintf("http_server_addr=%q", p.external.RemoteAddr().String()))
+			} else {
+				ev = append(ev, fmt.Sprintf("http_server_addr=%q", p.process.RemoteAddr().String()))
+				ev = append(ev, fmt.Sprintf("http_client_addr=%q", p.external.RemoteAddr().String()))
+			}
 
 			resp, err := http.ReadResponse(sr, req)
 			switch {
@@ -320,10 +323,11 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				resp.Body.Close()
 			}
 
-			ev.HttpDuration = proto.Int64(time.Now().UnixNano() - ev.Timestamp)
-			ev.HttpRespStatusCode = proto.Int32(int32(resp.StatusCode))
+			ev = append(ev, fmt.Sprintf("http_duration=%d", time.Since(begin).Nanoseconds()))
+			ev = append(ev, fmt.Sprintf("http_resp_status_code=%d", resp.StatusCode))
+			ev = append(ev, resp.Header.Get("x-subtrace-tags"))
 
-			tracer.DefaultManager.Insert(ev)
+			tracer.DefaultManager.Insert(strings.Join(ev, " "))
 		}
 	}()
 
