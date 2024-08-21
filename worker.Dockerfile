@@ -1,7 +1,8 @@
-FROM golang:1.22.0 AS build
+FROM --platform=$BUILDPLATFORM golang:1.22.0 AS build
 WORKDIR /go/src/subtrace
 COPY . .
-RUN --mount=type=cache,target=/go/pkg --mount=type=cache,target=/root/.cache make
+ARG TARGETARCH
+RUN --mount=type=cache,target=/go/pkg --mount=type=cache,target=/root/.cache GOARCH=$TARGETARCH make
 
 FROM clickhouse/clickhouse-server:24.8-alpine
 COPY --from=build /go/src/subtrace/subtrace /usr/local/bin/subtrace
