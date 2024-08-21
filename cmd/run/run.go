@@ -107,7 +107,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		return fmt.Errorf("SUBTRACE_TOKEN is empty")
 	}
 
-	slog.Info("starting tracer", "version", version.Version, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
+	slog.Info("starting tracer", "release", version.Release, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
 
 	switch os.Getenv("_SUBTRACE_CHILD") {
 	case "": // parent
