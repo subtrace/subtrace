@@ -74,7 +74,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		return fmt.Errorf("SUBTRACE_TOKEN is empty")
 	}
 
-	slog.Info("starting worker node", "version", version.Version, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
+	slog.Info("starting worker node", "release", version.Release, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
 
 	if err := c.initClickhouse(ctx); err != nil {
 		return fmt.Errorf("init clickhouse: %w", err)

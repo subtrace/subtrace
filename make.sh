@@ -3,6 +3,7 @@
 set -eo pipefail
 
 cmd:subtrace() {
+  set +x
   SUBTRACE_RELEASE_VERSION=$(printf "b%03d" "$(git log --oneline | wc -l)")
   SUBTRACE_COMMIT_HASH="$(git log -1 --format='%H' 2>/dev/null || echo unknown)"
   SUBTRACE_COMMIT_TIME=$(TZ=UTC git log -1 --date='format-local:%Y-%m-%dT%H:%M:%SZ' --format='%cd' 2>/dev/null || echo unknown)
@@ -12,10 +13,11 @@ cmd:subtrace() {
   fi
 
   LDFLAGS=
-  LDFLAGS="${LDFLAGS} -X subtrace.dev/cmd/version.Version=${SUBTRACE_RELEASE_VERSION}"
+  LDFLAGS="${LDFLAGS} -X subtrace.dev/cmd/version.Release=${SUBTRACE_RELEASE_VERSION}"
   LDFLAGS="${LDFLAGS} -X subtrace.dev/cmd/version.CommitHash=${SUBTRACE_COMMIT_HASH}"
   LDFLAGS="${LDFLAGS} -X subtrace.dev/cmd/version.CommitTime=${SUBTRACE_COMMIT_TIME}"
   LDFLAGS="${LDFLAGS} -X subtrace.dev/cmd/version.BuildTime=${SUBTRACE_BUILD_TIME}"
+  set -x
 
   CGO_ENABLED=0 go build -ldflags "${LDFLAGS}" -o subtrace
 }
