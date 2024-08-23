@@ -346,9 +346,9 @@ func (c *Command) addClickhouseColumns(ctx context.Context, cols []string) error
 	for _, col := range cols {
 		switch col {
 		case "http_duration":
-			add = append(add, fmt.Sprintf("ADD COLUMN IF NOT EXISTS `%s` UInt64", col))
+			add = append(add, fmt.Sprintf("ADD COLUMN IF NOT EXISTS `%s` Nullable(UInt64)", col))
 		default:
-			add = append(add, fmt.Sprintf("ADD COLUMN IF NOT EXISTS `%s` String CODEC(ZSTD(1))", col))
+			add = append(add, fmt.Sprintf("ADD COLUMN IF NOT EXISTS `%s` Nullable(String) CODEC(ZSTD(1))", col))
 			add = append(add, fmt.Sprintf("ADD INDEX IF NOT EXISTS `index_%s` `%s` TYPE bloom_filter(0.01) GRANULARITY 1", col, col))
 		}
 	}
