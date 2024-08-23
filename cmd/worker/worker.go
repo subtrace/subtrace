@@ -484,7 +484,6 @@ func (c *Command) proxyClickhouse(ctx context.Context, tunnelID uuid.UUID, tunne
 
 	q := u.Query()
 	q.Set("query", stmt)
-	q.Set("format_schema", fmt.Sprintf("%s:Event", tunnelID.String()))
 	q.Set("max_result_bytes", fmt.Sprintf("%d", maxResultBytes))
 	q.Set("buffer_size", fmt.Sprintf("%d", maxResultBytes))
 	q.Set("wait_end_of_query", "1")
@@ -499,7 +498,7 @@ func (c *Command) proxyClickhouse(ctx context.Context, tunnelID uuid.UUID, tunne
 	}
 
 	req.Header.Set("x-clickhouse-database", c.flags.clickhouse.database)
-	req.Header.Set("x-clickhouse-format", "Protobuf")
+	req.Header.Set("x-clickhouse-format", "JSONCompact")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
