@@ -40,7 +40,6 @@ type Command struct {
 		clickhouse struct {
 			host          string
 			database      string
-			formatSchemas string
 		}
 	}
 
@@ -60,7 +59,6 @@ func NewCommand() *ffcli.Command {
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
 	c.FlagSet.StringVar(&c.flags.clickhouse.host, "clickhouse-host", "localhost", "clickhouse host")
 	c.FlagSet.StringVar(&c.flags.clickhouse.database, "clickhouse-database", "subtrace", "clickhouse database")
-	c.FlagSet.StringVar(&c.flags.clickhouse.formatSchemas, "clickhouse-format-schemas", "/var/lib/clickhouse/format_schemas/", "clickhouse format schemas directory")
 
 	c.Options = []ff.Option{ff.WithEnvVarPrefix("SUBTRACE")}
 	c.Exec = c.entrypoint
@@ -80,10 +78,6 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		return fmt.Errorf("init clickhouse: %w", err)
 	}
 	defer c.clickhouse.Close()
-
-	if err := os.MkdirAll(c.flags.clickhouse.formatSchemas, 0o755); err != nil {
-		return fmt.Errorf("create clickhouse format schemas directory: %w", err)
-	}
 
 	if err := c.loop(ctx); err != nil {
 		return fmt.Errorf("tunnel handler loop: %w", err)
@@ -327,7 +321,7 @@ func (c *Command) rebuildMaterializedView(ctx context.Context) error {
 
 	if err := c.clickhouse.Exec(ctx, fmt.Sprintf(`
 		ALTER TABLE %s.ingest_mv MODIFY QUERY
-		SELECT %s 
+		SELECT %s
 		FROM (SELECT mapReverseSort(extractKeyValuePairsWithEscaping(line, '=', ' ', '"')) AS tags FROM ingest)
 	`, c.flags.clickhouse.database, strings.Join(cols, ", "))); err != nil {
 		return fmt.Errorf("ALTER TABLE: %w", err)
