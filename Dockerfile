@@ -1,6 +1,7 @@
 FROM golang:1.22.0 AS build
 WORKDIR /go/src/subtrace
 COPY . .
+COPY .git .git
 RUN --mount=type=cache,target=/go/pkg --mount=type=cache,target=/root/.cache make
 
 FROM debian:12
