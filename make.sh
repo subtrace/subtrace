@@ -32,7 +32,6 @@ cmd:proto() {
 cmd:clickhouse() {
   case $1 in
     start)
-      format_schemas_dir=${SUBTRACE_CLICKHOUSE_FORMAT_SCHEMAS:=/var/lib/clickhouse/format_schemas/}
       mkdir -p "${format_schemas_dir}"
       docker run -d --rm --name subtrace_clickhouse \
         -u $(id -u):$(id -g) -e CLICKHOUSE_UID=0 -e CLICKHOUSE_GID=0 \

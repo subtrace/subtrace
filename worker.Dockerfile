@@ -11,7 +11,6 @@ RUN cat >/subtrace_entrypoint.sh <<EOF
   bash /clickhouse_entrypoint.sh &
   export SUBTRACE_CLICKHOUSE_HOST=localhost
   export SUBTRACE_CLICKHOUSE_DATABASE=default
-  export SUBTRACE_CLICKHOUSE_FORMAT_SCHEMAS=/var/lib/clickhouse/format_schemas
   subtrace worker \$*
 EOF
 RUN chmod +x /subtrace_entrypoint.sh
