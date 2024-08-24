@@ -5,12 +5,15 @@ ARG TARGETARCH
 RUN --mount=type=cache,target=/go/pkg --mount=type=cache,target=/root/.cache GOARCH=$TARGETARCH make
 
 FROM clickhouse/clickhouse-server:24.8-alpine
+RUN mv /entrypoint.sh /clickhouse_entrypoint.sh
 COPY --from=build /go/src/subtrace/subtrace /usr/local/bin/subtrace
-RUN cat >/usr/local/bin/start_worker.sh <<EOF
-  clickhouse-server &
+RUN cat >/subtrace_entrypoint.sh <<EOF
+  bash /clickhouse_entrypoint.sh &
   export SUBTRACE_CLICKHOUSE_HOST=localhost
   export SUBTRACE_CLICKHOUSE_DATABASE=default
   export SUBTRACE_CLICKHOUSE_FORMAT_SCHEMAS=/var/lib/clickhouse/format_schemas
   subtrace worker \$*
 EOF
-ENTRYPOINT ["/usr/bin/bash", "/usr/local/bin/start_worker.sh"]
+RUN chmod +x /subtrace_entrypoint.sh
+ENTRYPOINT ["bash", "-c"]
+CMD ["/subtrace_entrypoint.sh"]
