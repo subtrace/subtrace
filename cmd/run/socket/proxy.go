@@ -270,16 +270,17 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
+			begin := time.Now()
+			ev := event.New()
+
 			if req.Body != nil {
+				ch := ev.AddLazy()
 				go func() {
+					defer close(ch)
 					io.Copy(io.Discard, req.Body)
 					req.Body.Close()
 				}()
 			}
-
-			begin := time.Now()
-
-			ev := event.New()
 
 			ev.Set("pid", fmt.Sprintf("%d", os.Getpid()))
 
@@ -310,16 +311,19 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
+			ev.Set("http_resp_status_code", fmt.Sprintf("http_resp_status_code=%d", resp.StatusCode))
+
 			if resp.Body != nil {
-				// Unlike the io.Copy(io.Discard, req.Body), we discard the response
-				// body without a new goroutine so that the time.Now() call below
-				// captures the HTTP request duration accurately.
-				io.Copy(io.Discard, resp.Body)
-				resp.Body.Close()
+				ch := ev.AddLazy()
+				go func() {
+					defer close(ch)
+					io.Copy(io.Discard, resp.Body)
+					resp.Body.Close()
+				}()
 			}
 
+			ev.WaitLazy()
 			ev.Set("http_duration", fmt.Sprintf("%d", time.Since(begin).Nanoseconds()))
-			ev.Set("http_resp_status_code", fmt.Sprintf("http_resp_status_code=%d", resp.StatusCode))
 
 			tags := ev.String()
 			if val := os.Getenv("SUBTRACE_TAGS"); val != "" {
