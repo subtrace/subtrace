@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +21,7 @@ import (
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/cmd/run/tracer"
+	"subtrace.dev/event"
 )
 
 var hostname string
@@ -279,29 +279,24 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 
 			begin := time.Now()
 
-			var ev []string
+			ev := event.New()
 
-			ev = append(ev, fmt.Sprintf("time=%s", time.Now().UTC().Format(time.RFC3339Nano)))
-			ev = append(ev, os.Getenv("SUBTRACE_TAGS"))
-			ev = append(ev, req.Header.Get("x-subtrace-tags"))
-
-			ev = append(ev, fmt.Sprintf("hostname=%q", hostname))
-			ev = append(ev, fmt.Sprintf("pid=%d", os.Getpid()))
+			ev.Set("pid", fmt.Sprintf("%d", os.Getpid()))
 
 			if p.tlsServerName != nil && *p.tlsServerName != "" {
-				ev = append(ev, fmt.Sprintf("tls_server_name=%q", *p.tlsServerName))
+				ev.Set("tls_server_name", *p.tlsServerName)
 			}
 
-			ev = append(ev, fmt.Sprintf("http_version=%q", req.Proto))
-			ev = append(ev, fmt.Sprintf("http_is_outgoing=%v", p.isOutgoing))
-			ev = append(ev, fmt.Sprintf("http_req_method=%q", req.Method))
-			ev = append(ev, fmt.Sprintf("http_req_path=%q", req.URL.Path))
+			ev.Set("http_version", req.Proto)
+			ev.Set("http_is_outgoing", fmt.Sprintf("%v", p.isOutgoing))
+			ev.Set("http_req_method", req.Method)
+			ev.Set("http_req_path", req.URL.Path)
 			if p.isOutgoing {
-				ev = append(ev, fmt.Sprintf("http_client_addr=%q", p.process.RemoteAddr().String()))
-				ev = append(ev, fmt.Sprintf("http_server_addr=%q", p.external.RemoteAddr().String()))
+				ev.Set("http_client_addr", p.process.RemoteAddr().String())
+				ev.Set("http_server_addr", p.external.RemoteAddr().String())
 			} else {
-				ev = append(ev, fmt.Sprintf("http_server_addr=%q", p.process.RemoteAddr().String()))
-				ev = append(ev, fmt.Sprintf("http_client_addr=%q", p.external.RemoteAddr().String()))
+				ev.Set("http_client_addr", p.external.RemoteAddr().String())
+				ev.Set("http_server_addr", p.process.RemoteAddr().String())
 			}
 
 			resp, err := http.ReadResponse(sr, req)
@@ -323,11 +318,21 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				resp.Body.Close()
 			}
 
-			ev = append(ev, fmt.Sprintf("http_duration=%d", time.Since(begin).Nanoseconds()))
-			ev = append(ev, fmt.Sprintf("http_resp_status_code=%d", resp.StatusCode))
-			ev = append(ev, resp.Header.Get("x-subtrace-tags"))
+			ev.Set("http_duration", fmt.Sprintf("%d", time.Since(begin).Nanoseconds()))
+			ev.Set("http_resp_status_code", fmt.Sprintf("http_resp_status_code=%d", resp.StatusCode))
 
-			tracer.DefaultManager.Insert(strings.Join(ev, " "))
+			tags := ev.String()
+			if val := os.Getenv("SUBTRACE_TAGS"); val != "" {
+				tags += " " + val
+			}
+			if val := req.Header.Get("x-subtrace-tags"); val != "" {
+				tags += " " + val
+			}
+			if val := resp.Header.Get("x-subtrace-tags"); val != "" {
+				tags += " " + val
+			}
+			fmt.Printf("%s\n", tags)
+			tracer.DefaultManager.Insert(tags)
 		}
 	}()
 
