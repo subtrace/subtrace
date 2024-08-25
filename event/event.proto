@@ -5,18 +5,31 @@ package subtrace.event;
 option go_package = "subtrace.dev/event";
 
 enum KnownFields {
-  time                  = 0;
-  event_id              = 1;
-  service               = 2;
-  hostname              = 3;
-  pid                   = 4;
-  tls_server_name       = 5;
-  http_version          = 6;
-  http_is_outgoing      = 7;
-  http_client_addr      = 8;
-  http_server_addr      = 9;
-  http_duration         = 10;
-  http_req_method       = 11;
-  http_req_path         = 12;
+  time = 0;
+
+  event_id = 1;
+
+  service = 2;
+
+  hostname = 3;
+
+  pid = 4;
+
+  tls_server_name = 5;
+
+  http_version = 6;
+
+  http_is_outgoing = 7;
+
+  http_client_addr = 8;
+
+  http_server_addr = 9;
+
+  http_duration = 10;
+
+  http_req_method = 11;
+
+  http_req_path = 12;
+
   http_resp_status_code = 13;
-}
+} // next = 14
