@@ -22,6 +22,7 @@ var hostname = sync.OnceValue(func() string {
 type Event struct {
 	mu sync.Mutex
 	kv []kv
+	wg sync.WaitGroup
 }
 
 func New() *Event {
@@ -52,6 +53,32 @@ func (ev *Event) Set(key string, val string) {
 	ev.mu.Lock()
 	defer ev.mu.Unlock()
 	ev.kv = append(ev.kv, kv{key: key, val: val})
+}
+
+func (ev *Event) SetLazy(key string) chan<- string {
+	ev.mu.Lock()
+	defer ev.mu.Unlock()
+	ch := make(chan string, 1)
+	ev.wg.Add(1)
+	go func() {
+		defer ev.wg.Done()
+		ev.Set(key, <-ch)
+	}()
+	return ch
+}
+
+func (ev *Event) AddLazy() chan<- struct{} {
+	ch := make(chan struct{})
+	ev.wg.Add(1)
+	go func() {
+		defer ev.wg.Done()
+		<-ch
+	}()
+	return ch
+}
+
+func (ev *Event) WaitLazy() {
+	ev.wg.Wait()
 }
 
 func (ev *Event) String() string {
