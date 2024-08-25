@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/fd"
+	"subtrace.dev/event"
 )
 
 const (
@@ -144,9 +145,11 @@ type Socket struct {
 	FD     *fd.FD
 
 	current atomic.Pointer[immutable]
+
+	tmpl *event.Event
 }
 
-func NewSocket(domain int, typ int) (*Socket, error) {
+func NewSocket(tmpl *event.Event, domain int, typ int) (*Socket, error) {
 	if domain != unix.AF_INET && domain != unix.AF_INET6 {
 		return nil, fmt.Errorf("unsupported domain 0x%x", domain)
 	}
@@ -164,7 +167,7 @@ func NewSocket(domain int, typ int) (*Socket, error) {
 	fd := fd.NewFD(ret)
 	defer fd.DecRef()
 
-	s := &Socket{Domain: domain, FD: fd}
+	s := &Socket{Domain: domain, FD: fd, tmpl: tmpl}
 	s.current.Store(&immutable{status: StatusPassive})
 	slog.Debug("created socket", "sock", s)
 	return s, nil
@@ -233,7 +236,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 		return unix.EBADF, nil
 	}
 
-	p := &proxy{begin: time.Now(), isOutgoing: true}
+	p := newProxy(s.tmpl, true)
 
 	isBlocking, err := s.isBlocking()
 	if err != nil {
@@ -660,11 +663,9 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 			external, err := lis.Accept()
 			switch {
 			case err == nil:
-				buffer <- &proxy{
-					begin:      time.Now(),
-					isOutgoing: false,
-					external:   external.(*net.TCPConn),
-				}
+				p := newProxy(s.tmpl, false)
+				p.external = external.(*net.TCPConn)
+				buffer <- p
 			case errors.Is(err, net.ErrClosed):
 				return
 			default:

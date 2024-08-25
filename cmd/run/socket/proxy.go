@@ -37,6 +37,16 @@ type proxy struct {
 	begin         time.Time
 	isOutgoing    bool
 	tlsServerName *string
+
+	tmpl *event.Event
+}
+
+func newProxy(tmpl *event.Event, isOutgoing bool) *proxy {
+	return &proxy{
+		begin:      time.Now(),
+		isOutgoing: isOutgoing,
+		tmpl:       tmpl,
+	}
 }
 
 func (p *proxy) Close() error {
@@ -271,7 +281,7 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			}
 
 			begin := time.Now()
-			ev := event.New()
+			ev := p.tmpl.Clone()
 
 			if req.Body != nil {
 				ch := ev.SetLazy("http_req_body_size_bytes_wire")
@@ -281,8 +291,6 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 					ch <- fmt.Sprintf("%d", n)
 				}()
 			}
-
-			ev.Set("pid", fmt.Sprintf("%d", os.Getpid()))
 
 			if p.tlsServerName != nil && *p.tlsServerName != "" {
 				ev.Set("tls_server_name", *p.tlsServerName)

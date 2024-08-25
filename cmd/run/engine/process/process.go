@@ -4,16 +4,22 @@
 package process
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/socket"
+	"subtrace.dev/event"
 )
 
 type Process struct {
@@ -24,6 +30,8 @@ type Process struct {
 	mu      sync.Mutex
 	sockets map[int]*socket.Socket
 	links   map[string]string
+
+	tmpl atomic.Pointer[event.Event]
 }
 
 // New creates a new process with the given PID.
@@ -43,6 +51,36 @@ func New(pid int) (*Process, error) {
 		sockets: make(map[int]*socket.Socket),
 		links:   make(map[string]string),
 	}, nil
+}
+
+func (p *Process) getEventTemplate() *event.Event {
+	if tmpl := p.tmpl.Load(); tmpl != nil {
+		return tmpl
+	}
+
+	tmpl := event.New()
+
+	tmpl.Set("process_id", fmt.Sprintf("%d", p.PID))
+
+	if path, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", p.PID)); err == nil {
+		tmpl.Set("process_executable_name", filepath.Base(path))
+	}
+
+	if info, err := os.Stat(fmt.Sprintf("/proc/%d/exe", p.PID)); err == nil {
+		tmpl.Set("process_executable_size", fmt.Sprintf("%d", info.Size()))
+	}
+
+	if cmdline, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", p.PID)); err == nil {
+		var parts []string
+		args := bytes.Split(cmdline, []byte{0})
+		for i := 0; i < len(args)-1; i++ {
+			parts = append(parts, string(args[i]))
+		}
+		tmpl.Set("process_command_line", strings.Join(parts, " "))
+	}
+
+	p.tmpl.Store(tmpl)
+	return tmpl
 }
 
 func (p *Process) LogValue() slog.Value {

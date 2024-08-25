@@ -44,6 +44,19 @@ func (p *Process) handleExitGroup(n *seccomp.Notif, code int) error {
 	return n.Skip()
 }
 
+func (p *Process) handleExecve(n *seccomp.Notif, pathAddr uintptr, argvAddr uintptr, envpAddr uintptr) error {
+	// Invalidate the event template cache so that sockets created by the new
+	// program will require re-reading values for process event fields such as
+	// process_exec_name, process_exec_size and process_cmdline.
+	p.tmpl.Store(nil)
+	return n.Skip()
+}
+
+func (p *Process) handleExecveat(n *seccomp.Notif, dirfd int, pathAddr uintptr, argvAddr uintptr, envpAddr uintptr, flags int) error {
+	p.tmpl.Store(nil)
+	return n.Skip()
+}
+
 func (p *Process) resolveDirfd(dirfd int) (string, syscall.Errno, error) {
 	if dirfd == unix.AT_FDCWD {
 		path, err := os.Readlink(fmt.Sprintf("/proc/%d/cwd", p.PID))
@@ -250,7 +263,7 @@ func (p *Process) handleSocket(n *seccomp.Notif, domain, typ, protocol int) erro
 		return n.Skip()
 	}
 
-	sock, err := socket.NewSocket(domain, typ)
+	sock, err := socket.NewSocket(p.getEventTemplate(), domain, typ)
 	if err != nil {
 		return fmt.Errorf("create new socket: %w", err)
 	}
@@ -479,6 +492,13 @@ func init() {
 	}
 	Handlers[unix.SYS_EXIT_GROUP] = func(p *Process, n *seccomp.Notif) error {
 		return p.handleExitGroup(n, int(n.Args[0]))
+	}
+
+	Handlers[unix.SYS_EXECVE] = func(p *Process, n *seccomp.Notif) error {
+		return p.handleExecve(n, uintptr(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]))
+	}
+	Handlers[unix.SYS_EXECVEAT] = func(p *Process, n *seccomp.Notif) error {
+		return p.handleExecveat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), uintptr(n.Args[3]), int(n.Args[4]))
 	}
 
 	Handlers[unix.SYS_OPENAT] = func(p *Process, n *seccomp.Notif) error {
