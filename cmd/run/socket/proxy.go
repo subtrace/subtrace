@@ -274,11 +274,11 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			ev := event.New()
 
 			if req.Body != nil {
-				ch := ev.AddLazy()
+				ch := ev.SetLazy("http_req_body_size_bytes_wire")
 				go func() {
-					defer close(ch)
-					io.Copy(io.Discard, req.Body)
+					n, _ := io.Copy(io.Discard, req.Body)
 					req.Body.Close()
+					ch <- fmt.Sprintf("%d", n)
 				}()
 			}
 
@@ -314,17 +314,18 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			ev.Set("http_resp_status_code", fmt.Sprintf("http_resp_status_code=%d", resp.StatusCode))
 
 			if resp.Body != nil {
-				ch := ev.AddLazy()
+				ch := ev.SetLazy("http_resp_body_size_bytes_wire")
 				go func() {
-					defer close(ch)
-					io.Copy(io.Discard, resp.Body)
+					n, _ := io.Copy(io.Discard, resp.Body)
 					resp.Body.Close()
+					ch <- fmt.Sprintf("%d", n)
 				}()
 			}
 
 			ev.WaitLazy()
 			ev.Set("http_duration", fmt.Sprintf("%d", time.Since(begin).Nanoseconds()))
 
+			ev.WaitLazy()
 			tags := ev.String()
 			if val := os.Getenv("SUBTRACE_TAGS"); val != "" {
 				tags += " " + val
@@ -335,7 +336,6 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			if val := resp.Header.Get("x-subtrace-tags"); val != "" {
 				tags += " " + val
 			}
-			fmt.Printf("%s\n", tags)
 			tracer.DefaultManager.Insert(tags)
 		}
 	}()

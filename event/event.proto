@@ -31,5 +31,9 @@ enum KnownFields {
 
   http_req_path = 12;
 
+  http_req_body_size_bytes_wire = 14;
+
   http_resp_status_code = 13;
-} // next = 14
+
+  http_resp_body_size_bytes_wire = 15;
+} // next = 16
