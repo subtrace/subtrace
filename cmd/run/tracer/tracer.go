@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,6 +18,8 @@ import (
 	"subtrace.dev/rpc"
 	"subtrace.dev/tunnel"
 )
+
+var DefaultManager = newManager()
 
 type block struct {
 	mu     sync.Mutex
@@ -152,6 +155,7 @@ func (b *block) flush(ctx context.Context) error {
 type Manager struct {
 	pool sync.Pool
 	cur  atomic.Pointer[block]
+	log  atomic.Bool
 }
 
 func newManager() *Manager {
@@ -161,6 +165,10 @@ func newManager() *Manager {
 }
 
 func (m *Manager) Insert(event string) {
+	if m.log.Load() {
+		fmt.Fprintf(os.Stderr, "%s\n", event)
+	}
+
 	var next *block
 	for {
 		cur := m.cur.Load()
@@ -200,4 +208,6 @@ func (m *Manager) Flush() error {
 	}
 }
 
-var DefaultManager = newManager()
+func (m *Manager) SetLog(log bool) {
+	m.log.Store(log)
+}
