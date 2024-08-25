@@ -311,7 +311,10 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
-			ev.Set("http_resp_status_code", fmt.Sprintf("http_resp_status_code=%d", resp.StatusCode))
+			ev.Set("http_resp_status_code", fmt.Sprintf("%d", resp.StatusCode))
+			if val := resp.Header.Get("content-type"); val != "" {
+				ev.Set("http_resp_content_type", val)
+			}
 
 			if resp.Body != nil {
 				ch := ev.SetLazy("http_resp_body_size_bytes_wire")
