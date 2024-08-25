@@ -13,7 +13,13 @@ enum KnownFields {
 
   hostname = 3;
 
-  pid = 4;
+  process_id = 4;
+
+  process_executable_name = 17;
+
+  process_executable_size = 18;
+
+  process_command_line = 19;
 
   tls_server_name = 5;
 
@@ -38,4 +44,4 @@ enum KnownFields {
   http_resp_body_size_bytes_wire = 15;
 
   http_resp_content_type = 16;
-} // next = 17
+} // next = 20
