@@ -36,8 +36,12 @@ import (
 )
 
 type Command struct {
+	flags struct {
+		log   bool
+		pprof string
+	}
+
 	ffcli.Command
-	pprof string
 }
 
 func NewCommand() *ffcli.Command {
@@ -48,8 +52,9 @@ func NewCommand() *ffcli.Command {
 	c.ShortHelp = "run a command with subtrace"
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
-	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
-	c.FlagSet.StringVar(&c.pprof, "pprof", "", "enable pprof CPU profiling and write to file")
+	c.FlagSet.BoolVar(&c.flags.log, "log", false, "log HTTP trace events to stderr")
+	c.FlagSet.StringVar(&c.flags.pprof, "pprof", "", "write pprof CPU profile to file")
+	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose debug logging")
 	c.UsageFunc = func(fc *ffcli.Command) string {
 		return ffcli.DefaultUsageFunc(fc) + ExtraHelp()
 	}
@@ -257,8 +262,8 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		return 0, fmt.Errorf("check kernel version: %w", err)
 	}
 
-	if c.pprof != "" {
-		f, err := os.Create(c.pprof)
+	if c.flags.pprof != "" {
+		f, err := os.Create(c.flags.pprof)
 		if err != nil {
 			return 0, fmt.Errorf("create pprof file: %w", err)
 		}
@@ -274,6 +279,7 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		return 0, fmt.Errorf("generate TLS ephemeral CA: %w", err)
 	}
 
+	tracer.DefaultManager.SetLog(c.flags.log)
 	defer func() {
 		if err := tracer.DefaultManager.Flush(); err != nil {
 			slog.Error("failed to flush tracer event manager", "err", err)
