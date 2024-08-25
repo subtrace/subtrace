@@ -40,6 +40,8 @@ func (ev *Event) Clone() *Event {
 	other := &Event{}
 	for i := 0; i < len(ev.kv); i++ {
 		switch ev.kv[i].key {
+		case "time":
+			other.kv = append(other.kv, kv{key: ev.kv[i].key, val: time.Now().UTC().Format(time.RFC3339Nano)})
 		case "event_id":
 			other.kv = append(other.kv, kv{key: ev.kv[i].key, val: uuid.NewString()})
 		default:
@@ -90,12 +92,7 @@ func (ev *Event) String() string {
 		if len(ret) > 0 {
 			ret += " "
 		}
-		ret += fmt.Sprintf("%s=", ev.kv[i].key)
-		if quoted := fmt.Sprintf("%q", ev.kv[i].val); len(quoted) > len(ev.kv[i].val)+2 {
-			ret += quoted
-		} else {
-			ret += ev.kv[i].val
-		}
+		ret += fmt.Sprintf("%s=%q", ev.kv[i].key, ev.kv[i].val)
 	}
 	return ret
 }
