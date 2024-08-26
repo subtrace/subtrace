@@ -201,7 +201,7 @@ func (m *Manager) Flush() error {
 	for {
 		cur := m.cur.Load()
 		if m.cur.CompareAndSwap(cur, next) {
-			err := cur.flush(context.TODO())
+			err := cur.flush(context.Background())
 			m.pool.Put(cur)
 			return err
 		}
@@ -210,4 +210,37 @@ func (m *Manager) Flush() error {
 
 func (m *Manager) SetLog(log bool) {
 	m.log.Store(log)
+}
+
+func (m *Manager) StartBackgroundFlush(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	backoff := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		if backoff > 0 {
+			backoff--
+			continue
+		}
+
+		if err := m.Flush(); err != nil {
+			slog.Error("failed to flush block", "err", err)
+			if backoff == 0 {
+				backoff = 1
+			} else {
+				backoff *= 2
+			}
+			if backoff > 30 {
+				backoff = 30
+			}
+		} else {
+			backoff = 0
+		}
+	}
 }
