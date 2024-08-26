@@ -320,6 +320,9 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			if val := req.Header.Get("host"); val != "" {
 				ev.Set("http_req_host", val)
 			}
+			if val := req.Header.Get("x-forwarded-for"); val != "" {
+				ev.Set("http_req_x_forwarded_for", val)
+			}
 
 			resp, err := http.ReadResponse(sr, req)
 			switch {
