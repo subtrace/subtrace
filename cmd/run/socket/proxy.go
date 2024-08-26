@@ -314,6 +314,9 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			if val := req.Header.Get("content-encoding"); val != "" {
 				ev.Set("http_req_content_encoding", val)
 			}
+			if val := req.Header.Get("content-length"); val != "" {
+				ev.Set("http_req_content_length", val)
+			}
 			if val := req.Header.Get("host"); val != "" {
 				ev.Set("http_req_host", val)
 			}
@@ -335,6 +338,9 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			}
 			if val := resp.Header.Get("content-encoding"); val != "" {
 				ev.Set("http_resp_content_encoding", val)
+			}
+			if val := resp.Header.Get("content-length"); val != "" {
+				ev.Set("http_resp_content_length", val)
 			}
 
 			if resp.Body != nil {
