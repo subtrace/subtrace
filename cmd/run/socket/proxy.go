@@ -311,6 +311,9 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			if val := req.Header.Get("content-type"); val != "" {
 				ev.Set("http_req_content_type", val)
 			}
+			if val := req.Header.Get("content-encoding"); val != "" {
+				ev.Set("http_req_content_encoding", val)
+			}
 
 			resp, err := http.ReadResponse(sr, req)
 			switch {
@@ -326,6 +329,9 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			ev.Set("http_resp_status_code", fmt.Sprintf("%d", resp.StatusCode))
 			if val := resp.Header.Get("content-type"); val != "" {
 				ev.Set("http_resp_content_type", val)
+			}
+			if val := resp.Header.Get("content-encoding"); val != "" {
+				ev.Set("http_resp_content_encoding", val)
 			}
 
 			if resp.Body != nil {
