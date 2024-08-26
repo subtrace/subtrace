@@ -87,7 +87,6 @@ func (p *Process) getEventTemplate() *event.Event {
 			} else {
 				tmpl.Set("process_user", fmt.Sprintf("%d", sys.Uid))
 			}
-			fmt.Printf("%T\n", sys)
 		}
 	}
 

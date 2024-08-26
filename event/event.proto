@@ -41,6 +41,8 @@ enum KnownFields {
 
   http_req_body_size_bytes_wire = 14;
 
+  http_req_transfer_encoding = 29;
+
   http_req_content_type = 21;
 
   http_req_content_encoding = 23;
@@ -55,9 +57,11 @@ enum KnownFields {
 
   http_resp_body_size_bytes_wire = 15;
 
+  http_resp_transfer_encoding = 30;
+
   http_resp_content_type = 16;
 
   http_resp_content_encoding = 22;
 
   http_resp_content_length = 27;
-} // next = 29
+} // next = 31
