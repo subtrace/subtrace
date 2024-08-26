@@ -314,6 +314,9 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			if val := req.Header.Get("content-encoding"); val != "" {
 				ev.Set("http_req_content_encoding", val)
 			}
+			if val := req.Header.Get("host"); val != "" {
+				ev.Set("http_req_host", val)
+			}
 
 			resp, err := http.ReadResponse(sr, req)
 			switch {
