@@ -23,6 +23,8 @@ enum KnownFields {
 
   process_user = 20;
 
+  protocol = 31;
+
   tls_server_name = 5;
 
   http_version = 6;
@@ -64,4 +66,4 @@ enum KnownFields {
   http_resp_content_encoding = 22;
 
   http_resp_content_length = 27;
-} // next = 31
+} // next = 32
