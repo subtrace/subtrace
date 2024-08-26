@@ -296,16 +296,20 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				ev.Set("tls_server_name", *p.tlsServerName)
 			}
 
-			ev.Set("http_version", req.Proto)
-			ev.Set("http_is_outgoing", fmt.Sprintf("%v", p.isOutgoing))
-			ev.Set("http_req_method", req.Method)
-			ev.Set("http_req_path", req.URL.Path)
 			if p.isOutgoing {
 				ev.Set("http_client_addr", p.process.RemoteAddr().String())
 				ev.Set("http_server_addr", p.external.RemoteAddr().String())
 			} else {
 				ev.Set("http_client_addr", p.external.RemoteAddr().String())
 				ev.Set("http_server_addr", p.process.RemoteAddr().String())
+			}
+
+			ev.Set("http_version", req.Proto)
+			ev.Set("http_is_outgoing", fmt.Sprintf("%v", p.isOutgoing))
+			ev.Set("http_req_method", req.Method)
+			ev.Set("http_req_path", req.URL.Path)
+			if val := req.Header.Get("content-type"); val != "" {
+				ev.Set("http_req_content_type", val)
 			}
 
 			resp, err := http.ReadResponse(sr, req)
