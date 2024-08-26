@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -77,6 +78,17 @@ func (p *Process) getEventTemplate() *event.Event {
 			parts = append(parts, string(args[i]))
 		}
 		tmpl.Set("process_command_line", strings.Join(parts, " "))
+	}
+
+	if info, err := os.Stat(fmt.Sprintf("/proc/%d", p.PID)); err == nil {
+		if sys, ok := info.Sys().(*syscall.Stat_t); ok {
+			if name, err := findUsername(sys.Uid); err == nil && name != "" {
+				tmpl.Set("process_user", name)
+			} else {
+				tmpl.Set("process_user", fmt.Sprintf("%d", sys.Uid))
+			}
+			fmt.Printf("%T\n", sys)
+		}
 	}
 
 	p.tmpl.Store(tmpl)
@@ -248,6 +260,28 @@ func (p *Process) cleanup() {
 	for _, err := range errs {
 		slog.Error("failed to clean up process", "err", err)
 	}
+}
+
+func findUsername(uid uint32) (string, error) {
+	b, err := os.ReadFile("/etc/passwd")
+	if err != nil {
+		return "", fmt.Errorf("read file: %w", err)
+	}
+
+	for _, line := range strings.Split(string(b), "\n") {
+		parts := strings.Split(line, ":")
+		if len(parts) != 7 {
+			continue
+		}
+		parsed, err := strconv.Atoi(parts[2])
+		if err != nil {
+			continue
+		}
+		if parsed == int(uid) {
+			return parts[0], nil
+		}
+	}
+	return "", fmt.Errorf("not found")
 }
 
 func htons(x uint16) uint16 { return (x&0xff)<<8 | (x >> 8) }
