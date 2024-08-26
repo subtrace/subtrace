@@ -21,6 +21,8 @@ enum KnownFields {
 
   process_command_line = 19;
 
+  process_user = 20;
+
   tls_server_name = 5;
 
   http_version = 6;
@@ -44,4 +46,4 @@ enum KnownFields {
   http_resp_body_size_bytes_wire = 15;
 
   http_resp_content_type = 16;
-} // next = 20
+} // next = 21
