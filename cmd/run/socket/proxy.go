@@ -4,7 +4,6 @@
 package socket
 
 import (
-	"strings"
 	"bufio"
 	"bytes"
 	"errors"
@@ -15,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -230,6 +230,7 @@ func (p *proxy) proxyTLS(cli, srv *bufConn) error {
 	if err := p.proxyOptimistic(newBufConn(tcli), newBufConn(tsrv)); err != nil {
 		return fmt.Errorf("proxy tls: %w", err)
 	}
+
 	return nil
 }
 
@@ -293,8 +294,13 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				}()
 			}
 
-			if p.tlsServerName != nil && *p.tlsServerName != "" {
-				ev.Set("tls_server_name", *p.tlsServerName)
+			if p.tlsServerName != nil {
+				ev.Set("protocol", "https")
+				if *p.tlsServerName != "" {
+					ev.Set("tls_server_name", *p.tlsServerName)
+				}
+			} else {
+				ev.Set("protocol", "http")
 			}
 
 			if p.isOutgoing {
