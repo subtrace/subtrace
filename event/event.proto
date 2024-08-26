@@ -49,6 +49,8 @@ enum KnownFields {
 
   http_req_host = 25;
 
+  http_req_x_forwarded_for = 28;
+
   http_resp_status_code = 13;
 
   http_resp_body_size_bytes_wire = 15;
@@ -58,4 +60,4 @@ enum KnownFields {
   http_resp_content_encoding = 22;
 
   http_resp_content_length = 27;
-} // next = 28
+} // next = 29
