@@ -4,6 +4,7 @@
 package socket
 
 import (
+	"strings"
 	"bufio"
 	"bytes"
 	"errors"
@@ -308,6 +309,9 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			ev.Set("http_is_outgoing", fmt.Sprintf("%v", p.isOutgoing))
 			ev.Set("http_req_method", req.Method)
 			ev.Set("http_req_path", req.URL.Path)
+			if len(req.TransferEncoding) > 0 {
+				ev.Set("http_req_transfer_encoding", strings.Join(req.TransferEncoding, ","))
+			}
 			if val := req.Header.Get("content-type"); val != "" {
 				ev.Set("http_req_content_type", val)
 			}
@@ -336,6 +340,9 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			}
 
 			ev.Set("http_resp_status_code", fmt.Sprintf("%d", resp.StatusCode))
+			if len(resp.TransferEncoding) > 0 {
+				ev.Set("http_resp_transfer_encoding", strings.Join(resp.TransferEncoding, ","))
+			}
 			if val := resp.Header.Get("content-type"); val != "" {
 				ev.Set("http_resp_content_type", val)
 			}
