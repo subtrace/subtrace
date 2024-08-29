@@ -4,7 +4,7 @@
 -- Part 2 simulates a user loading a web page on their browser with request
 -- correlation between the client and the server.
 
-INSERT INTO events (time, event_id, service, hostname, pid, tls_server_name, http_version, http_is_outgoing, http_client_addr, http_server_addr, http_duration, http_req_method, http_req_path, http_resp_status_code) VALUES
+INSERT INTO events (time, event_id, service, hostname, process_id, tls_server_name, http_version, http_is_outgoing, http_client_addr, http_server_addr, http_duration, http_req_method, http_req_path, http_resp_status_code) VALUES
   (now64(9) + toIntervalSecond(0.000), 'c5e83f39-a901-4f64-8d88-e04a72e711d1', 'gptwrapper', 'prod-us-east-1-001', '116086', 'gptwrapper.ai',    'HTTP/1.1', 'false', '1.2.3.4:39398',   '127.0.0.1:443',      198_532_566, 'PUT',    '/api/pdf-chat/40b7f609-5653-462f-88c7-7069c8d1fb4a',      '201'),
   (now64(9) + toIntervalSecond(0.100), '43f1d913-101c-4ae8-9980-e2bf653dc1b7', 'gptwrapper', 'prod-us-east-1-001', '116086', 'api.openai.com',   'HTTP/1.1', 'true',  '127.0.0.1:40402', '104.18.6.192:443',   104_563_859, 'GET',    '/v1/models',                                              '401'),
   (now64(9) + toIntervalSecond(0.200), '787ff1b8-2a72-4b75-9145-7122348696f7', 'gptwrapper', 'prod-us-east-1-001', '116086', 'api.openai.com',   'HTTP/1.1', 'true',  '127.0.0.1:40402', '104.18.6.192:443',   214_360_730, 'GET',    '/v1/models',                                              '200'),
