@@ -16,7 +16,6 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
-	"subtrace.dev/config"
 )
 
 type Option func(*http.Request) error
@@ -36,7 +35,7 @@ func Call[R any, PR ptr[R]](ctx context.Context, w proto.Message, path string, r
 
 	start := time.Now()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", config.ControlURL()+path, bytes.NewBuffer(b))
+	req, err := http.NewRequestWithContext(ctx, "POST", Format(path), bytes.NewBuffer(b))
 	if err != nil {
 		return 0, fmt.Errorf("new request: %w", err)
 	}
