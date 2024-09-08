@@ -59,7 +59,7 @@ func (p *Process) getEventTemplate() *event.Event {
 		return tmpl
 	}
 
-	tmpl := event.New()
+	tmpl := event.Base.Clone()
 
 	tmpl.Set("process_id", fmt.Sprintf("%d", p.PID))
 
