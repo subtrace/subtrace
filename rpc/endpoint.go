@@ -1,16 +1,20 @@
 package rpc
 
 import (
-	"fmt"
 	"os"
 	"strings"
 )
 
-func GetEndpoint() string {
-	if endpoint := os.Getenv("SUBTRACE_ENDPOINT"); endpoint != "" {
-		return endpoint
+func getEndpoint() string {
+	endpoint := os.Getenv("SUBTRACE_ENDPOINT")
+	if endpoint == "" {
+		return "https://subtrace.dev"
 	}
-	return "subtrace.dev"
+	endpoint = strings.TrimSuffix(endpoint, "/")
+	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		endpoint = "https://" + endpoint
+	}
+	return endpoint
 }
 
 // Format takes a path and returns its URL. For example, given "/api/GetSelf",
@@ -25,5 +29,5 @@ func Format(path string) string {
 	if !strings.HasPrefix(path, "/") { // TODO: is this too relaxed?
 		path = "/" + path
 	}
-	return fmt.Sprintf("https://%s%s", GetEndpoint(), path)
+	return getEndpoint() + path
 }
