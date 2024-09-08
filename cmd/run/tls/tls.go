@@ -16,20 +16,22 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"sync"
 	"time"
 )
 
 var (
-	hostname      string
-	ephemeralCert *x509.Certificate
-	ephemeralKey  *ecdsa.PrivateKey
+	generateOnce  sync.Once
+	generateErr   error
+	generatedCert *x509.Certificate
+	generatedKey  *ecdsa.PrivateKey
 )
 
-// GenerateEpehemeralCA creates an in-memory ephemeral CA certificate and
+// generateEphemeralCA creates an in-memory ephemeral CA certificate and
 // private key that will be used to transparently intercept, decrypt and
 // re-encrypt outgoing TLS requests.
-func GenerateEpehemeralCA() error {
-	if ephemeralCert != nil || ephemeralKey != nil {
+func generateEphemeralCA() error {
+	if generatedCert != nil || generatedKey != nil {
 		return fmt.Errorf("ephemeral CA already exists")
 	}
 
@@ -38,7 +40,7 @@ func GenerateEpehemeralCA() error {
 		return fmt.Errorf("generate private key: %w", err)
 	}
 
-	hostname, err = os.Hostname()
+	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown"
 	}
@@ -61,7 +63,7 @@ func GenerateEpehemeralCA() error {
 	}
 
 	block, _ := pem.Decode(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert}))
-	ephemeralCert, err = x509.ParseCertificate(block.Bytes)
+	generatedCert, err = x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		return fmt.Errorf("parse certificate: %w", err)
 	}
@@ -71,11 +73,28 @@ func GenerateEpehemeralCA() error {
 		return fmt.Errorf("marshal private key: %w", err)
 	}
 
-	ephemeralKey, err = x509.ParseECPrivateKey(privDER)
+	generatedKey, err = x509.ParseECPrivateKey(privDER)
 	if err != nil {
 		return fmt.Errorf("parse private key: %w", err)
 	}
 	return nil
+}
+
+// GetEphemeralCAPEM returns the PEM-encoded ephemeral CA certificate bytes
+// that should be appended to the system root CA certificate file.
+func GetEphemeralCAPEM() ([]byte, error) {
+	generateOnce.Do(func() { generateErr = generateEphemeralCA() })
+	if generateErr != nil {
+		return nil, fmt.Errorf("generate ephemeral CA: %w", generateErr)
+	}
+
+	var b []byte
+	b = append(b, "\n"...)
+	b = append(b, generatedCert.Subject.CommonName...)
+	b = append(b, "\n"...)
+	b = append(b, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: generatedCert.Raw})...)
+	b = append(b, "\n"...)
+	return b, nil
 }
 
 // ref: https://serverfault.com/a/722646
@@ -99,18 +118,6 @@ func IsKnownPath(path string) bool {
 
 	// TODO: support /etc/gnutls/config
 	return false
-}
-
-// GetEphemeralCA returns the PEM-encoded ephemeral CA certificate bytes
-// that should be appended to the system root CA certificate file.
-func GetEphemeralCABytes() []byte {
-	var b []byte
-	b = append(b, "\n"...)
-	b = append(b, fmt.Sprintf("# Subtrace Ephemeral CA (generated on host: %q)", hostname)...)
-	b = append(b, "\n"...)
-	b = append(b, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ephemeralCert.Raw})...)
-	b = append(b, "\n"...)
-	return b
 }
 
 // newLeafCertificate generates an ephemeral X.509 leaf certificate for a TLS
@@ -161,7 +168,7 @@ func newLeafCertificate(orig *x509.Certificate) (tls.Certificate, error) {
 		ExtKeyUsage: orig.ExtKeyUsage,
 	}
 
-	leaf, err := x509.CreateCertificate(rand.Reader, template, ephemeralCert, priv.Public(), ephemeralKey)
+	leaf, err := x509.CreateCertificate(rand.Reader, template, generatedCert, priv.Public(), generatedKey)
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("create certificate: %w", err)
 	}

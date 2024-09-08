@@ -25,12 +25,6 @@ import (
 	"subtrace.dev/event"
 )
 
-var hostname string
-
-func init() {
-	hostname, _ = os.Hostname()
-}
-
 type proxy struct {
 	process  *net.TCPConn
 	external *net.TCPConn

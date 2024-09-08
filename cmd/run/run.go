@@ -29,7 +29,6 @@ import (
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/futex"
 	"subtrace.dev/cmd/run/kernel"
-	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/cmd/run/tracer"
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/logging"
@@ -273,10 +272,6 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 			return 0, fmt.Errorf("start cpu profile: %w", err)
 		}
 		defer pprof.StopCPUProfile()
-	}
-
-	if err := tls.GenerateEpehemeralCA(); err != nil {
-		return 0, fmt.Errorf("generate TLS ephemeral CA: %w", err)
 	}
 
 	tracer.DefaultManager.SetLog(c.flags.log)
