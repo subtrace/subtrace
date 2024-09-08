@@ -115,6 +115,11 @@ func (p *Process) handleOpen(n *seccomp.Notif, dirfd int, pathAddr uintptr, flag
 		return n.Skip()
 	}
 
+	pem, err := tls.GetEphemeralCAPEM()
+	if err != nil {
+		return n.Skip()
+	}
+
 	orig, err := os.ReadFile(path)
 	if err != nil {
 		return n.Skip()
@@ -129,7 +134,7 @@ func (p *Process) handleOpen(n *seccomp.Notif, dirfd int, pathAddr uintptr, flag
 	defer memfd.DecRef()
 	defer unix.Close(memfd.FD())
 
-	if _, err := unix.Write(memfd.FD(), append(orig, tls.GetEphemeralCABytes()...)); err != nil {
+	if _, err := unix.Write(memfd.FD(), append(orig, pem...)); err != nil {
 		return fmt.Errorf("inject ephemeral CA: write: %w", err)
 	}
 	if _, _, errno := unix.Syscall(unix.SYS_LSEEK, uintptr(memfd.FD()), 0, 0); errno != 0 {
@@ -162,6 +167,11 @@ func (p *Process) handleFstatat(n *seccomp.Notif, dirfd int, pathAddr uintptr, b
 		return n.Skip()
 	}
 
+	pem, err := tls.GetEphemeralCAPEM()
+	if err != nil {
+		return n.Skip()
+	}
+
 	var nr int
 	switch runtime.GOARCH {
 	case "amd64":
@@ -180,7 +190,7 @@ func (p *Process) handleFstatat(n *seccomp.Notif, dirfd int, pathAddr uintptr, b
 	orig.UnmarshalBytes(b)
 
 	repl := orig
-	repl.Size += int64(len(tls.GetEphemeralCABytes()))
+	repl.Size += int64(len(pem))
 	b = make([]byte, repl.SizeBytes(), repl.SizeBytes())
 	repl.MarshalBytes(b)
 
@@ -204,6 +214,11 @@ func (p *Process) handleStatx(n *seccomp.Notif, dirfd int, pathAddr uintptr, fla
 		return n.Skip()
 	}
 
+	pem, err := tls.GetEphemeralCAPEM()
+	if err != nil {
+		return n.Skip()
+	}
+
 	pathb := []byte(path)
 
 	var orig linux.Statx
@@ -214,7 +229,7 @@ func (p *Process) handleStatx(n *seccomp.Notif, dirfd int, pathAddr uintptr, fla
 	orig.UnmarshalBytes(b)
 
 	repl := orig
-	repl.Size += uint64(len(tls.GetEphemeralCABytes()))
+	repl.Size += uint64(len(pem))
 	b = make([]byte, repl.SizeBytes(), repl.SizeBytes())
 	repl.MarshalBytes(b)
 
