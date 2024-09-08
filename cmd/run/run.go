@@ -31,6 +31,7 @@ import (
 	"subtrace.dev/cmd/run/kernel"
 	"subtrace.dev/cmd/run/tracer"
 	"subtrace.dev/cmd/version"
+	"subtrace.dev/event"
 	"subtrace.dev/logging"
 )
 
@@ -274,6 +275,10 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		defer pprof.StopCPUProfile()
 	}
 
+	go c.watchSignals()
+
+	c.initEventBase()
+
 	tracer.DefaultManager.SetLog(c.flags.log)
 	go tracer.DefaultManager.StartBackgroundFlush(ctx)
 	defer func() {
@@ -281,8 +286,6 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 			slog.Error("failed to flush tracer event manager", "err", err)
 		}
 	}()
-
-	go c.runSignalHandler()
 
 	pid, sec, err := c.forkChild()
 	if err != nil {
@@ -314,7 +317,7 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	return status.ExitStatus(), nil
 }
 
-func (c *Command) runSignalHandler() {
+func (c *Command) watchSignals() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, unix.SIGINT, unix.SIGTERM, unix.SIGQUIT)
 	for {
@@ -329,6 +332,14 @@ func (c *Command) runSignalHandler() {
 		}
 		slog.Debug("received signal", "code", code)
 	}
+}
+
+func (c *Command) initEventBase() {
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = ""
+	}
+	event.Base.Set("hostname", hostname)
 }
 
 // forkChild forks and re-executes the subtrace binary to run in child mode. It
