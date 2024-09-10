@@ -2,85 +2,109 @@ package event
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-type kv struct {
-	key string
-	val string
-}
-
-var Base = &Event{}
+var Base = new(Event)
 
 type Event struct {
-	mu sync.RWMutex
-	kv []kv
-	wg sync.WaitGroup
+	mu   sync.RWMutex
+	keys []string
+	vals map[string]string
+	lazy sync.WaitGroup
 }
 
-func (ev *Event) Clone() *Event {
-	ev.mu.RLock()
-	defer ev.mu.RUnlock()
+func New() *Event {
+	return &Event{
+		keys: []string{"time", "event_id"},
+		vals: map[string]string{
+			"time":     time.Now().UTC().Format(time.RFC3339Nano),
+			"event_id": uuid.NewString(),
+		},
+	}
+}
 
-	child := &Event{}
-	child.Set("time", time.Now().UTC().Format(time.RFC3339Nano))
-	child.Set("event_id", uuid.NewString())
-	for i := 0; i < len(ev.kv); i++ {
-		switch ev.kv[i].key {
+func NewFromTemplate(tmpl *Event) *Event {
+	ev := New()
+	if tmpl != nil {
+		ev.CopyFrom(tmpl)
+	}
+	return ev
+}
+
+// CopyFrom copies all tags from src except "time" and "event_id". If a key
+// already exists in dst, it will be overwritten.
+func (dst *Event) CopyFrom(src *Event) {
+	if src == nil {
+		return
+	}
+
+	src.mu.RLock()
+	defer src.mu.RUnlock()
+
+	dst.mu.Lock()
+	defer dst.mu.Unlock()
+
+	for _, key := range src.keys {
+		switch key {
 		case "time":
 		case "event_id":
 		default:
-			child.kv = append(child.kv, ev.kv[i])
+			dst.setLocked(key, src.vals[key])
 		}
 	}
-	return child
 }
 
 func (ev *Event) Set(key string, val string) {
 	ev.mu.Lock()
 	defer ev.mu.Unlock()
-	ev.kv = append(ev.kv, kv{key: key, val: val})
+	ev.setLocked(key, val)
 }
 
-func (ev *Event) SetLazy(key string) chan<- string {
-	ev.mu.Lock()
-	defer ev.mu.Unlock()
+func (ev *Event) setLocked(key string, val string) {
+	if ev.vals == nil {
+		ev.vals = make(map[string]string)
+	}
+
+	if _, ok := ev.vals[key]; ok {
+		ev.vals[key] = val
+		return
+	}
+
+	ev.keys = append(ev.keys, key)
+	ev.vals[key] = val
+}
+
+func (ev *Event) NewLazy(key string) chan<- string {
 	ch := make(chan string, 1)
-	ev.wg.Add(1)
+	ev.lazy.Add(1)
+
+	ev.mu.Lock()
+	ev.keys = append(ev.keys, key)
+	ev.mu.Unlock()
+
 	go func() {
-		defer ev.wg.Done()
+		defer ev.lazy.Done()
 		ev.Set(key, <-ch)
 	}()
 	return ch
 }
 
-func (ev *Event) AddLazy() chan<- struct{} {
-	ch := make(chan struct{})
-	ev.wg.Add(1)
-	go func() {
-		defer ev.wg.Done()
-		<-ch
-	}()
-	return ch
-}
-
 func (ev *Event) WaitLazy() {
-	ev.wg.Wait()
+	ev.lazy.Wait()
 }
 
 func (ev *Event) String() string {
 	ev.mu.RLock()
 	defer ev.mu.RUnlock()
 
-	var ret string
-	for i := 0; i < len(ev.kv); i++ {
-		if len(ret) > 0 {
-			ret += " "
-		}
-		ret += fmt.Sprintf("%s=%q", ev.kv[i].key, ev.kv[i].val)
+	var arr []string
+	for _, key := range ev.keys {
+		arr = append(arr, fmt.Sprintf("%s=%q", key, ev.vals[key]))
 	}
-	return ret
+	return strings.Join(arr, " ")
 }
