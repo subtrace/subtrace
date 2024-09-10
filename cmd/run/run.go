@@ -29,6 +29,7 @@ import (
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/futex"
 	"subtrace.dev/cmd/run/internal/tags/cloudtags"
+	"subtrace.dev/cmd/run/internal/tags/gcptags"
 	"subtrace.dev/cmd/run/internal/tags/kubetags"
 	"subtrace.dev/cmd/run/kernel"
 	"subtrace.dev/cmd/run/tracer"
@@ -349,6 +350,17 @@ func (c *Command) initEventBase() {
 		defer close(cloudBarrier)
 		if cloud = cloudtags.GuessCloudDMI(); cloud == cloudtags.CloudUnknown {
 			cloud = cloudtags.GuessCloudIMDS()
+		}
+	}()
+
+	go func() {
+		<-cloudBarrier
+		switch cloud {
+		case cloudtags.CloudGCP:
+			c := gcptags.New()
+			if project, err := c.Get("/computeMetadata/v1/project/project-id"); err == nil {
+				event.Base.Set("gcp_project", project)
+			}
 		}
 	}()
 

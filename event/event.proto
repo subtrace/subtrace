@@ -12,6 +12,8 @@ enum KnownFields {
 
   hostname = 3;
 
+  gcp_project = 36;
+
   kubernetes_namespace = 32;
   gke_cluster_location = 33;
   gke_cluster_name = 34;
@@ -50,4 +52,4 @@ enum KnownFields {
   http_resp_content_encoding = 22;
   http_resp_content_length = 27;
 
-} // next = 36
+} // next = 37
