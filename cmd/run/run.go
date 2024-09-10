@@ -28,6 +28,8 @@ import (
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/futex"
+	"subtrace.dev/cmd/run/internal/tags/cloudtags"
+	"subtrace.dev/cmd/run/internal/tags/kubetags"
 	"subtrace.dev/cmd/run/kernel"
 	"subtrace.dev/cmd/run/tracer"
 	"subtrace.dev/cmd/version"
@@ -340,6 +342,26 @@ func (c *Command) initEventBase() {
 		hostname = ""
 	}
 	event.Base.Set("hostname", hostname)
+
+	cloud := cloudtags.CloudUnknown
+	cloudBarrier := make(chan struct{})
+	go func() {
+		defer close(cloudBarrier)
+		if cloud = cloudtags.GuessCloudDMI(); cloud == cloudtags.CloudUnknown {
+			cloud = cloudtags.GuessCloudIMDS()
+		}
+	}()
+
+	if partial, ok := kubetags.FetchLocal(); ok {
+		event.Base.CopyFrom(partial)
+		go func() {
+			<-cloudBarrier
+			switch cloud {
+			case cloudtags.CloudGCP:
+				event.Base.CopyFrom(kubetags.FetchGKE())
+			}
+		}()
+	}
 }
 
 // forkChild forks and re-executes the subtrace binary to run in child mode. It

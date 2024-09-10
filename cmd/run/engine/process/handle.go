@@ -20,6 +20,7 @@ import (
 	"subtrace.dev/cmd/run/socket"
 	"subtrace.dev/cmd/run/syscalls"
 	"subtrace.dev/cmd/run/tls"
+	"subtrace.dev/event"
 )
 
 // handleExit handles the exit(2) syscall.
@@ -278,7 +279,7 @@ func (p *Process) handleSocket(n *seccomp.Notif, domain, typ, protocol int) erro
 		return n.Skip()
 	}
 
-	sock, err := socket.NewSocket(p.getEventTemplate().Clone(), domain, typ)
+	sock, err := socket.NewSocket(event.NewFromTemplate(p.getEventTemplate()), domain, typ)
 	if err != nil {
 		return fmt.Errorf("create new socket: %w", err)
 	}

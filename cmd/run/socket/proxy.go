@@ -277,10 +277,10 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			}
 
 			begin := time.Now()
-			ev := p.tmpl.Clone()
+			ev := event.NewFromTemplate(p.tmpl)
 
 			if req.Body != nil {
-				ch := ev.SetLazy("http_req_body_size_bytes_wire")
+				ch := ev.NewLazy("http_req_body_size_bytes_wire")
 				go func() {
 					n, _ := io.Copy(io.Discard, req.Body)
 					req.Body.Close()
@@ -354,7 +354,7 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			}
 
 			if resp.Body != nil {
-				ch := ev.SetLazy("http_resp_body_size_bytes_wire")
+				ch := ev.NewLazy("http_resp_body_size_bytes_wire")
 				go func() {
 					n, _ := io.Copy(io.Discard, resp.Body)
 					resp.Body.Close()

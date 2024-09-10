@@ -6,21 +6,21 @@ option go_package = "subtrace.dev/event";
 
 enum KnownFields {
   time = 0;
-
   event_id = 1;
 
   service = 2;
 
   hostname = 3;
 
+  kubernetes_namespace = 32;
+  gke_cluster_location = 33;
+  gke_cluster_name = 34;
+  gke_node_name = 35;
+
   process_id = 4;
-
   process_executable_name = 17;
-
   process_executable_size = 18;
-
   process_command_line = 19;
-
   process_user = 20;
 
   protocol = 31;
@@ -28,42 +28,26 @@ enum KnownFields {
   tls_server_name = 5;
 
   http_version = 6;
-
   http_is_outgoing = 7;
-
   http_client_addr = 8;
-
   http_server_addr = 9;
-
   http_duration = 10;
 
   http_req_method = 11;
-
   http_req_path = 12;
-
   http_req_body_size_bytes_wire = 14;
-
   http_req_transfer_encoding = 29;
-
   http_req_content_type = 21;
-
   http_req_content_encoding = 23;
-
   http_req_content_length = 26;
-
   http_req_host = 25;
-
   http_req_x_forwarded_for = 28;
 
   http_resp_status_code = 13;
-
   http_resp_body_size_bytes_wire = 15;
-
   http_resp_transfer_encoding = 30;
-
   http_resp_content_type = 16;
-
   http_resp_content_encoding = 22;
-
   http_resp_content_length = 27;
-} // next = 32
+
+} // next = 36
