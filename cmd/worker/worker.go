@@ -19,7 +19,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,8 +37,8 @@ import (
 type Command struct {
 	flags struct {
 		clickhouse struct {
-			host          string
-			database      string
+			host     string
+			database string
 		}
 	}
 
@@ -362,13 +361,10 @@ func (c *Command) addClickhouseColumns(ctx context.Context, cols []string) error
 func (c *Command) loopTunnel(ctx context.Context, tunnelID uuid.UUID, conn *websocket.Conn, role tunnel.Role) error {
 	slog.Debug("starting tunnel loop", "tunnelID", tunnelID)
 
-	var mu sync.Mutex
-	var prevCancel context.CancelFunc
-	defer func() {
-		if prevCancel != nil {
-			prevCancel()
-		}
-	}()
+	// We create a new context for the query handler so that all inflight queries
+	// get killed when the tunnel closes.
+	childCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	for {
 		select {
@@ -377,7 +373,7 @@ func (c *Command) loopTunnel(ctx context.Context, tunnelID uuid.UUID, conn *webs
 		default:
 		}
 
-		typ, b, err := conn.Read(ctx)
+		typ, msg, err := conn.Read(ctx)
 		if err != nil {
 			return fmt.Errorf("query: read: %w", err)
 		}
@@ -385,24 +381,9 @@ func (c *Command) loopTunnel(ctx context.Context, tunnelID uuid.UUID, conn *webs
 			return fmt.Errorf("query: unexpected websocket message type %d", typ)
 		}
 
-		if !mu.TryLock() {
-			// There can only be one inflight query at any time, we must cancel any
-			// previous queries that are still running. If this is the first query or
-			// if the previous query has already finished, this is a noop.
-			if prevCancel != nil {
-				prevCancel()
-			}
-
-			// Now wait for the previous query to release the lock.
-			mu.Lock()
-		}
-
-		childCtx, cancel := context.WithCancel(ctx)
-		prevCancel = cancel
-
+		// TODO: enforce sane limits on the maximum number of concurrent queries?
 		go func() {
-			defer mu.Unlock()
-			if err := c.handleQuery(childCtx, tunnelID, conn, role, b); err != nil {
+			if err := c.handleQuery(childCtx, tunnelID, conn, role, msg); err != nil {
 				slog.Error("failed to handle query", "tunnelID", tunnelID, "err", err)
 				return
 			}
@@ -483,6 +464,8 @@ func (c *Command) proxyClickhouse(ctx context.Context, tunnelID uuid.UUID, tunne
 	q.Set("wait_end_of_query", "1")
 	u.RawQuery = q.Encode()
 
+	// TODO: set a timeout for each query (maybe makes sense to have different
+	// timeouts for SELECTs and INSERTs)?
 	req, err := http.NewRequestWithContext(ctx, "POST", u.String(), data)
 	if err != nil {
 		return &tunnel.Result{
