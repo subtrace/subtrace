@@ -1,5 +1,5 @@
-CREATE TABLE events (
-  `time` DateTime64(9) CODEC(Delta, ZSTD(1)),                                                                                                                                  
+CREATE TABLE subtrace_events_{{.Suffix}} (
+  `time` DateTime64(9) CODEC(Delta, ZSTD(1)),
   `event_id` UUID,
   `service` LowCardinality(String),
   INDEX `index_time` `time` TYPE minmax,

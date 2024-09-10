@@ -4,12 +4,14 @@
 package clickhouse
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
 	"log/slog"
+	"text/template"
 	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
@@ -74,16 +76,16 @@ func New(ctx context.Context, host string, database string) (*Client, error) {
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-// ApplyMigrations applies all previously unapplied migrations. If successful,
-// it returns the number of newly applied migrations.
-func (c *Client) ApplyMigrations(ctx context.Context) (applied int, _ error) {
-	if err := c.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS migrations (
+// ApplyMigrations applies all previously unapplied migrations for the given
+// suffix. If successful, it returns the number of newly applied migrations.
+func (c *Client) ApplyMigrations(ctx context.Context, suffix string) (applied int, _ error) {
+	if err := c.Exec(ctx, fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS subtrace_migrations_%s (
 			file String PRIMARY KEY,
 			insert_time DateTime64(6, 'UTC') NOT NULL,
 		) ENGINE = MergeTree ORDER BY file;
-	`); err != nil {
-		return 0, fmt.Errorf("CREATE TABLE migrations: %w", err)
+	`, suffix)); err != nil {
+		return 0, fmt.Errorf("CREATE TABLE subtrace_migrations_%s: %w", suffix, err)
 	}
 
 	files, err := migrations.ReadDir("migrations")
@@ -91,43 +93,47 @@ func (c *Client) ApplyMigrations(ctx context.Context) (applied int, _ error) {
 		return 0, fmt.Errorf("read migrations dir: %w", err)
 	}
 
-	var count uint64
-	if err := c.QueryRow(ctx, `SELECT COUNT(*) FROM migrations;`).Scan(&count); err != nil {
-		return 0, fmt.Errorf("SELECT migrations: %w", err)
-	}
-
 	for _, f := range files {
 		var exists bool
-		if err := c.QueryRow(ctx, `
+		if err := c.QueryRow(ctx, fmt.Sprintf(`
 			SELECT true
-			FROM migrations
+			FROM subtrace_migrations_%s
 			WHERE file = $1;
-		`, f.Name()).Scan(&exists); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return applied, fmt.Errorf("SELECT %s: %w", f.Name(), err)
+		`, suffix), f.Name()).Scan(&exists); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return applied, fmt.Errorf("SELECT subtrace_migrations_%s: %s: %w", suffix, f.Name(), err)
 		}
 		if exists {
 			continue
 		}
 
-		slog.Info("applying new migration", "name", f.Name())
+		slog.Info("applying new migration", "suffix", suffix, "name", f.Name())
 
 		b, err := migrations.ReadFile(fmt.Sprintf("migrations/%s", f.Name()))
 		if err != nil {
-			return applied, fmt.Errorf("read %s: %w", f.Name(), err)
+			return applied, fmt.Errorf("read template: %s: %w", f.Name(), err)
 		}
 
-		if err := c.Exec(ctx, string(b)); err != nil {
-			return applied, fmt.Errorf("apply %s: %w", f.Name(), err)
+		tmpl, err := template.New(f.Name()).Parse(string(b))
+		if err != nil {
+			return applied, fmt.Errorf("parse template: %s: %w", f.Name(), err)
 		}
 
-		if err := c.Exec(ctx, `
-			INSERT INTO migrations (file, insert_time)
+		out := new(bytes.Buffer)
+		if err := tmpl.Execute(out, map[string]string{"Suffix": suffix}); err != nil {
+			return applied, fmt.Errorf("execute template: %s: %w", f.Name(), err)
+		}
+
+		if err := c.Exec(ctx, out.String()); err != nil {
+			return applied, fmt.Errorf("apply: %s: %w", f.Name(), err)
+		}
+
+		if err := c.Exec(ctx, fmt.Sprintf(`
+			INSERT INTO subtrace_migrations_%s (file, insert_time)
 			VALUES ($1, $2);
-		`, f.Name(), time.Now().UTC()); err != nil {
-			return applied, fmt.Errorf("INSERT %s: %w", f.Name(), err)
+		`, suffix), f.Name(), time.Now().UTC()); err != nil {
+			return applied, fmt.Errorf("INSERT subtrace_migrations_%s: %s: %w", suffix, f.Name(), err)
 		}
 		applied++
 	}
-
 	return applied, nil
 }
