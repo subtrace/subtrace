@@ -33,6 +33,7 @@ message ListOpen {
     string tunnel_id = 1;
     string endpoint = 2;
     Role role = 3;
+    string namespace_id = 4;
   }
 
   message Response {
