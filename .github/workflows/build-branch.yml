@@ -14,6 +14,7 @@ jobs:
     - name: Run go mod tidy check
       run: |
         set -e
+        # testing CI
         # Change this to `go mod tidy -diff` once we upgrade to go 1.23
         # https://github.com/subtrace/monorepo/issues/220
         go mod tidy
