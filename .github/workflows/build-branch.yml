@@ -11,7 +11,15 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    - run: |
+    - name: Run go mod tidy check
+      run: |
+        set -e
+        # Change this to `go mod tidy -diff` once we upgrade to go 1.23
+        # https://github.com/subtrace/monorepo/issues/220
+        go mod tidy
+        git diff --name-only --exit-code
+    - name: Build subtrace binary
+      run: |
         set -e
 
         version=$(printf "b%03d" "$(git log --oneline | wc -l)")
