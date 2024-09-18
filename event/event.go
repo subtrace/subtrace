@@ -79,6 +79,13 @@ func (ev *Event) setLocked(key string, val string) {
 	ev.vals[key] = val
 }
 
+func (ev *Event) Get(key string) string {
+	ev.mu.RLock()
+	defer ev.mu.RUnlock()
+	val, _ := ev.vals[key]
+	return val
+}
+
 func (ev *Event) NewLazy(key string) chan<- string {
 	ch := make(chan string, 1)
 	ev.lazy.Add(1)
