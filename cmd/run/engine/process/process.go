@@ -111,19 +111,22 @@ func (p *Process) installSocket(n *seccomp.Notif, sock *socket.Socket, flags int
 	}
 	defer sock.FD.DecRef()
 
+	// Acquire the mutex because we want all subsequent getSocket calls to see
+	// that this is a socket we care about. Since the tracer engine may have
+	// multiple concurrent workers, we need synchronization until the end of this
+	// function.
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	fd, err := n.AddFD(sock.FD, flags)
 	if err != nil {
 		return fmt.Errorf("addfd: %w", err)
 	}
-
-	// Syscall processing is synchronous, so it's safe to do this non-atomically
-	// after AddFD. In the future, we may want to process syscalls async for
-	// better performance; if so, we'd need a global lock to do this safely so
-	// that syscalls after AddFD but before setSocket that refer to the installed
-	// socket don't get ignored.
-	if err := p.registerSocket(fd, sock); err != nil {
-		return fmt.Errorf("register installed socket internally: %w", err)
+	if p.sockets[fd] != nil {
+		return fmt.Errorf("register: socket already exists")
 	}
+	p.sockets[fd] = sock
+
 	slog.Debug("registered socket", "proc", p, "sock", sock, "fd", fmt.Sprintf("targfd_%d", fd))
 	return nil
 }
@@ -139,16 +142,6 @@ func (p *Process) getSocket(fd int, remove bool) (*socket.Socket, bool) {
 		delete(p.sockets, fd)
 	}
 	return s, ok
-}
-
-func (p *Process) registerSocket(fd int, sock *socket.Socket) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.sockets[fd] != nil {
-		return fmt.Errorf("already exists")
-	}
-	p.sockets[fd] = sock
-	return nil
 }
 
 func (p *Process) getFD(targetFD int) (*fd.FD, syscall.Errno) {
