@@ -236,7 +236,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 		return unix.EBADF, nil
 	}
 
-	p := newProxy(s.tmpl, true)
+	proxy := newProxy(s.tmpl, true)
 
 	isBlocking, err := s.isBlocking()
 	if err != nil {
@@ -253,13 +253,6 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 
 	slog.Debug("attempting socket connect", "sock", s, "addr", addr, "bind", bind, "isBlocking", isBlocking)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	dummy, err := newDummyListener(ctx, s.Domain)
-	if err != nil {
-		cancel()
-		return 0, fmt.Errorf("create dummy listener: %w", err)
-	}
-
 	mid := &immutable{status: StatusConnecting}
 	mid.connecting.bind = prev.passive.bind
 	mid.connecting.peer = addr
@@ -268,12 +261,10 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 		var err error
 		mid.connecting.bind, err = newTempBindSocket(s.Domain)
 		if err != nil {
-			cancel()
 			return 0, fmt.Errorf("create temp bind socket: %w", err)
 		}
 		bind, err = bindEphemeral(s.Domain, mid.connecting.bind, false)
 		if err != nil {
-			cancel()
 			if !mid.connecting.bind.ClosingIncRef() {
 				panic("failed to incref local temp bind socket?") // there should be no other refs
 			}
@@ -285,7 +276,6 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 	}
 
 	if !s.current.CompareAndSwap(prev, mid) {
-		cancel()
 		if prev.passive.bind == nil && mid.connecting.bind.ClosingIncRef() {
 			defer mid.connecting.bind.DecRef()
 			mid.connecting.bind.Lock()
@@ -294,20 +284,33 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 		return unix.ERESTART, nil
 	}
 
-	errs := make(chan error, 2)
+	dummyCtx, dummyCancel := context.WithCancel(context.Background())
+	dummy, err := newDummyListener(dummyCtx, s.Domain)
+	if err != nil {
+		dummyCancel()
+		return 0, fmt.Errorf("create dummy listener: %w", err)
+	}
 
+	var wg sync.WaitGroup
+	var errDummyAccept, errDialExternal error
+
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer dummy.lis.Close()
+
 		conn, err := dummy.lis.Accept()
 		if err != nil {
-			errs <- fmt.Errorf("accept listener: %w", err)
+			errDummyAccept = fmt.Errorf("accept dummy listener: %w", err)
 			return
 		}
-		p.process = conn.(*net.TCPConn)
-		errs <- nil
+		proxy.process = conn.(*net.TCPConn)
 	}()
 
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+
 		d := &net.Dialer{
 			Control: func(_, _ string, c syscall.RawConn) error {
 				var ret error
@@ -332,53 +335,97 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 
 		conn, err := d.DialContext(context.TODO(), "tcp", addr.String())
 		if err != nil {
-			slog.Debug("failed to connect to external", "sock", s, "addr", addr, "err", err, "duration", time.Since(p.begin).Nanoseconds()/1000)
-			errs <- fmt.Errorf("dial external: %w", err)
+			slog.Debug("failed to connect to external", "sock", s, "addr", addr, "err", err, "duration", time.Since(proxy.begin).Nanoseconds()/1000)
+			errDialExternal = fmt.Errorf("non-blocking connect: dial external: %w", err)
 			return
 		}
-		p.external = conn.(*net.TCPConn)
-		slog.Debug("connected to external", "sock", s, "addr", addr, "took", time.Since(p.begin).Nanoseconds()/1000)
-		errs <- nil
+		slog.Debug("connected to external", "sock", s, "addr", addr, "took", time.Since(proxy.begin).Nanoseconds()/1000)
+		proxy.external = conn.(*net.TCPConn)
 	}()
 
-	connectErrno := make(chan syscall.Errno, 1)
+	errnoConnect := make(chan syscall.Errno, 1)
 	go func() {
-		defer cancel()
-		if err := errors.Join(<-errs, <-errs); err != nil {
-			next := &immutable{status: StatusPassive}
+		defer dummyCancel()
+		wg.Wait()
+
+		var next *immutable
+		var errno unix.Errno
+
+		if err := errDummyAccept; err != nil {
+			// Check errDummyAccept before errDialExternal because the dummy listener's
+			// accept will almost never fail while the external dial may fail in many
+			// ways (maybe the remote address is unreachable, maybe the connection was
+			// refused, or maybe something else).
+			slog.Error("failed to accept on dummy listener", "err", err)
+			errno = unix.ENOSYS
+			goto out
+		}
+
+		if err := errDialExternal; err != nil {
+			if !errors.As(err, &errno) {
+				slog.Error("failed to interpret non-blocking dial external error as syscall.Errno", "err", err, "type", fmt.Sprintf("%T", err))
+				errno = unix.ENOSYS
+				goto out
+			}
+
+			next = &immutable{status: StatusPassive}
 			next.passive.bind = mid.connecting.bind
-			if !errors.As(err, &next.passive.errno) {
-				slog.Error("failed to interpret error as errno", "err", err)
-				connectErrno <- unix.ENOSYS
-				return
-			}
+			next.passive.errno = errno
+			goto out
+		}
+
+		next = &immutable{status: StatusConnected}
+		next.connected.proxy = proxy
+		go proxy.start()
+
+	out:
+
+		shouldCloseBind := true
+		if next != nil {
 			if !s.current.CompareAndSwap(mid, next) {
-				connectErrno <- unix.ERESTART
-				return
+				errno = unix.ERESTART
+			} else {
+				// We created a temporary socket earlier (mid.connecting.bind) in case this
+				// was a non-blocking connect so that the tracee's getsockname calls will
+				// behave correctly in the time after the tracee's connect and before the
+				// immutable state CAS.
+				//
+				// If the connect failed due to application-specific reasons such as
+				// ECONNREFUSED, next.status will be StatusPassive and there will
+				// remain a reference to bind in next.passive.bind so that a future
+				// getsockopt(2) can propagate that error back to the tracee. In this
+				// scenario, if the CAS succeeds, we must not close mid.connecting.bind
+				// so that next.passive.bind will remain open. In all other cases, it's
+				// guaranteed that there won't be any more new references to
+				// mid.connecting.bind, so it's okay to close the socket.
+				if next.status == StatusPassive {
+					shouldCloseBind = false
+				}
 			}
-			connectErrno <- errno
-			return
 		}
 
-		next := &immutable{status: StatusConnected}
-		next.connected.proxy = p
-		if !s.current.CompareAndSwap(mid, next) {
-			// TODO: close process and external?
-			connectErrno <- unix.ERESTART
-			return
+		// Send errno as early as possible in case this is a blocking connect.
+		errnoConnect <- errno
+
+		if errno != 0 {
+			if proxy.process != nil {
+				proxy.process.Close()
+			}
+			if proxy.external != nil {
+				proxy.external.Close()
+			}
 		}
 
-		go p.start()
-
-		// Close the temp bind socket if and only if we win the CAS so that
-		// a concurrent getsockname call won't erroneously fail with EBADF.
-		if mid.connecting.bind.ClosingIncRef() {
-			defer mid.connecting.bind.DecRef()
-			mid.connecting.bind.Lock()
-			unix.Close(mid.connecting.bind.FD())
+		if shouldCloseBind {
+			// mid.connecting.bind may have already been closed in the time it took
+			// to connect to the external endpoint. Therefore, unlike most other
+			// places, it's not an error if this ClosingIncRef fails.
+			if mid.connecting.bind.ClosingIncRef() {
+				defer mid.connecting.bind.DecRef()
+				mid.connecting.bind.Lock()
+				unix.Close(mid.connecting.bind.FD())
+			}
 		}
-
-		connectErrno <- 0
 	}()
 
 	// Normally, with non-blocking connect(2) calls, after the kernel queues the
@@ -456,7 +503,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 	}
 
 	if isBlocking {
-		if errno := <-connectErrno; errno != 0 {
+		if errno := <-errnoConnect; errno != 0 {
 			return errno, nil
 		}
 	}
