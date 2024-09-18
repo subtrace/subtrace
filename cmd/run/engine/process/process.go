@@ -28,7 +28,7 @@ type Process struct {
 	Exited chan struct{}
 
 	pidfd   *fd.FD
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	sockets map[int]*socket.Socket
 	links   map[string]string
 
@@ -131,16 +131,24 @@ func (p *Process) installSocket(n *seccomp.Notif, sock *socket.Socket, flags int
 	return nil
 }
 
-func (p *Process) getSocket(fd int, remove bool) (*socket.Socket, bool) {
+func (p *Process) getSocket(fd int) (*socket.Socket, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	s, ok := p.sockets[fd]
+	if !ok {
+		return nil, false
+	}
+	return s, ok
+}
+
+func (p *Process) getDeleteSocket(fd int) (*socket.Socket, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	s, ok := p.sockets[fd]
 	if !ok {
 		return nil, false
 	}
-	if remove {
-		delete(p.sockets, fd)
-	}
+	delete(p.sockets, fd)
 	return s, ok
 }
 
@@ -208,8 +216,8 @@ func (p *Process) Wait() error {
 // markAsExited marks the process as exited. If the process has already been
 // marked as exited by someone else, it returns false, otherwise true.
 func (p *Process) markAsExited() (marked bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	select {
 	case <-p.Exited:
@@ -230,8 +238,8 @@ func (p *Process) cleanup() {
 	// a dup+sendmsg or a pidfd_getfd?
 	<-p.Exited
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	var errs []error
 	for fd, s := range p.sockets {
 		if errno := s.Close(); errno != 0 {
@@ -249,8 +257,8 @@ func (p *Process) cleanup() {
 		}
 	}
 
-	for _, err := range errs {
-		slog.Error("failed to clean up process", "err", err)
+	for idx, err := range errs {
+		slog.Error("failed to clean up process", "process", p, "idx", idx, "err", err)
 	}
 }
 

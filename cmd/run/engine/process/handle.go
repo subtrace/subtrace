@@ -243,7 +243,7 @@ func (p *Process) handleStatx(n *seccomp.Notif, dirfd int, pathAddr uintptr, fla
 
 // handleClose handles the close(2) syscall.
 func (p *Process) handleClose(n *seccomp.Notif, fd int) error {
-	s, ok := p.getSocket(fd, true)
+	s, ok := p.getDeleteSocket(fd)
 	if !ok {
 		return n.Skip()
 	}
@@ -291,7 +291,7 @@ func (p *Process) handleSocket(n *seccomp.Notif, domain, typ, protocol int) erro
 
 // handleConnect handles the bind(2) syscall.
 func (p *Process) handleBind(n *seccomp.Notif, fd int, addrPtr uintptr, addrSize int) error {
-	s, ok := p.getSocket(fd, false)
+	s, ok := p.getSocket(fd)
 	if !ok {
 		return n.Skip()
 	}
@@ -313,7 +313,7 @@ func (p *Process) handleBind(n *seccomp.Notif, fd int, addrPtr uintptr, addrSize
 
 // handleConnect handles the connect(2) syscall.
 func (p *Process) handleConnect(n *seccomp.Notif, fd int, addrPtr uintptr, addrSize int) error {
-	s, ok := p.getSocket(fd, false)
+	s, ok := p.getSocket(fd)
 	if !ok {
 		return n.Skip()
 	}
@@ -335,7 +335,7 @@ func (p *Process) handleConnect(n *seccomp.Notif, fd int, addrPtr uintptr, addrS
 
 // handleListen handles the listen(2) syscall.
 func (p *Process) handleListen(n *seccomp.Notif, fd int, backlog int) error {
-	s, ok := p.getSocket(fd, false)
+	s, ok := p.getSocket(fd)
 	if !ok {
 		return n.Skip()
 	}
@@ -349,7 +349,7 @@ func (p *Process) handleListen(n *seccomp.Notif, fd int, backlog int) error {
 
 // handleAccept handles the accept(2) and accept4(2) syscalls.
 func (p *Process) handleAccept(n *seccomp.Notif, fd int, addrPtr uintptr, addrSizePtr uintptr, flags int) error {
-	s, ok := p.getSocket(fd, false)
+	s, ok := p.getSocket(fd)
 	if !ok {
 		return n.Skip()
 	}
@@ -402,7 +402,7 @@ func (p *Process) handleGetsockopt(n *seccomp.Notif, fd int, level int, name int
 		return n.Skip()
 	}
 
-	s, ok := p.getSocket(fd, false)
+	s, ok := p.getSocket(fd)
 	if !ok {
 		return n.Skip()
 	}
@@ -428,7 +428,7 @@ func (p *Process) handleGetsockopt(n *seccomp.Notif, fd int, level int, name int
 // handleGetsockname handles the getsockname(2) syscall to emulate the external
 // connection's bind address.
 func (p *Process) handleGetsockname(n *seccomp.Notif, fd int, addrPtr uintptr, addrSizePtr uintptr) error {
-	s, ok := p.getSocket(fd, false)
+	s, ok := p.getSocket(fd)
 	if !ok {
 		return n.Skip()
 	}
@@ -469,7 +469,7 @@ func (p *Process) handleGetsockname(n *seccomp.Notif, fd int, addrPtr uintptr, a
 // handleGetpeername handles the getpeername(2) syscall to emulate the external
 // connection's peer address.
 func (p *Process) handleGetpeername(n *seccomp.Notif, fd int, addrPtr uintptr, addrSizePtr uintptr) error {
-	s, ok := p.getSocket(fd, false)
+	s, ok := p.getSocket(fd)
 	if !ok {
 		return n.Skip()
 	}
