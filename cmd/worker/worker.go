@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -485,35 +486,54 @@ func (tc *tunnelConn) handleInsert(ctx context.Context, q *tunnel.Insert) *tunne
 		}
 	}
 
-	body := new(bytes.Buffer)
-	for i := range q.Events {
-		fmt.Fprintf(body, "%q", q.Events[i])
-		if i != len(q.Events)-1 {
-			fmt.Fprintf(body, ",")
+	data, err := json.Marshal(map[string][]string{"line": q.Events})
+	if err != nil {
+		return &tunnel.Result{
+			TunnelQueryId: q.TunnelQueryId,
+			TunnelError:   fmt.Errorf("encode JSONColumns: marshal: %w", err).Error(),
 		}
-		fmt.Fprintf(body, "\n")
 	}
 
-	return tc.proxyClickhouse(ctx, q.TunnelQueryId, fmt.Sprintf(`
-		INSERT INTO subtrace_ingest_%s VALUES FORMAT CSV
-	`, tc.suffix()), body)
+	return tc.runQuery(ctx, q.TunnelQueryId, fmt.Sprintf(`
+		INSERT INTO subtrace_ingest_%s FORMAT JSONColumns
+	`, tc.suffix()), bytes.NewBuffer(data))
 }
 
 func (tc *tunnelConn) handleSelect(ctx context.Context, q *tunnel.Select) *tunnel.Result {
-	return tc.proxyClickhouse(ctx, q.TunnelQueryId, q.SqlStatement, nil)
+	return tc.runQuery(ctx, q.TunnelQueryId, q.SqlStatement, nil)
 }
 
-func (tc *tunnelConn) proxyClickhouse(ctx context.Context, tunnelQueryID string, query string, body io.Reader) *tunnel.Result {
+func (tc *tunnelConn) runQuery(ctx context.Context, tunnelQueryID string, query string, data io.Reader) *tunnel.Result {
+	result, clickhouseQueryID, clickhouseErr, tunnelErr := tc.proxyClickhouse(ctx, query, data)
+	if tunnelErr != nil {
+		return &tunnel.Result{
+			TunnelQueryId:     tunnelQueryID,
+			ClickhouseQueryId: clickhouseQueryID,
+			TunnelError:       tunnelErr.Error(),
+		}
+	}
+	if clickhouseErr != nil {
+		return &tunnel.Result{
+			TunnelQueryId:     tunnelQueryID,
+			ClickhouseQueryId: clickhouseQueryID,
+			ClickhouseError:   clickhouseErr.Error(),
+		}
+	}
+	return &tunnel.Result{
+		TunnelQueryId:     tunnelQueryID,
+		ClickhouseQueryId: clickhouseQueryID,
+		Result:            result,
+	}
+}
+
+func (tc *tunnelConn) proxyClickhouse(ctx context.Context, query string, data io.Reader) (_ string, clickhouseQueryID string, clickhouseErr error, tunnelErr error) {
 	const maxResultBytes = 64 << 20
 
 	// 8123 is the ClickHouse HTTP default port
 	// ref: https://clickhouse.com/docs/en/guides/sre/network-ports
 	u, err := url.Parse(fmt.Sprintf("http://%s:8123/", tc.worker.flags.clickhouse.host))
 	if err != nil {
-		return &tunnel.Result{
-			TunnelQueryId: tunnelQueryID,
-			TunnelError:   fmt.Errorf("parse clickhouse HTTP interface endpoint: %w", err).Error(),
-		}
+		return "", "", nil, fmt.Errorf("parse clickhouse HTTP interface endpoint: %w", err)
 	}
 
 	q := u.Query()
@@ -525,12 +545,9 @@ func (tc *tunnelConn) proxyClickhouse(ctx context.Context, tunnelQueryID string,
 
 	// TODO: set a timeout for each query (maybe makes sense to have different
 	// timeouts for SELECTs and INSERTs)?
-	req, err := http.NewRequestWithContext(ctx, "POST", u.String(), body)
+	req, err := http.NewRequestWithContext(ctx, "POST", u.String(), data)
 	if err != nil {
-		return &tunnel.Result{
-			TunnelQueryId: tunnelQueryID,
-			TunnelError:   fmt.Errorf("create request: %w", err).Error(),
-		}
+		return "", "", nil, fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("x-clickhouse-database", tc.database())
@@ -538,40 +555,30 @@ func (tc *tunnelConn) proxyClickhouse(ctx context.Context, tunnelQueryID string,
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return &tunnel.Result{
-			TunnelQueryId: tunnelQueryID,
-			TunnelError:   fmt.Errorf("do request: %w", err).Error(),
-		}
+		return "", "", nil, fmt.Errorf("do request: %w", err)
 	}
 	defer resp.Body.Close()
+	body := io.LimitReader(bufio.NewReader(resp.Body), maxResultBytes)
+
+	clickhouseQueryID = resp.Header.Get("x-clickhouse-query-id")
 
 	if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("clickhouse returned status %d", resp.StatusCode)
-		if msg, _ := io.ReadAll(io.LimitReader(bufio.NewReader(resp.Body), maxResultBytes)); len(msg) != 0 {
-			err = fmt.Errorf("%w: %s", err, string(msg))
-		} else if exception := resp.Header.Get("x-clickhouse-exception-code"); exception != "" {
-			err = fmt.Errorf("%w: clickhouse exception code %s", err, exception)
-		} else {
-			err = fmt.Errorf("%w: <empty error message>", err)
+		clickhouseErr = fmt.Errorf("clickhouse returned status %d", resp.StatusCode)
+		if code := resp.Header.Get("x-clickhouse-exception-code"); code != "" {
+			clickhouseErr = fmt.Errorf("%w: exception %s", clickhouseErr, code)
 		}
-		return &tunnel.Result{
-			TunnelQueryId:     tunnelQueryID,
-			ClickhouseQueryId: resp.Header.Get("x-clickhouse-query-id"),
-			ClickhouseError:   fmt.Errorf("do request: %w", err).Error(),
+		var details struct {
+			Exception *string `json:"exception"`
 		}
+		if err := json.NewDecoder(body).Decode(&details); err == nil && details.Exception != nil {
+			clickhouseErr = fmt.Errorf("%w (details: %s)", clickhouseErr, *details.Exception)
+		}
+		return "", clickhouseQueryID, clickhouseErr, nil
 	}
 
-	result, err := io.ReadAll(io.LimitReader(bufio.NewReader(resp.Body), maxResultBytes))
+	result, err := io.ReadAll(body)
 	if err != nil {
-		return &tunnel.Result{
-			TunnelQueryId:     tunnelQueryID,
-			ClickhouseQueryId: resp.Header.Get("x-clickhouse-query-id"),
-			TunnelError:       fmt.Errorf("read response body: %w", err).Error(),
-		}
+		return "", clickhouseQueryID, nil, fmt.Errorf("read clickhouse response body: %w", err)
 	}
-
-	return &tunnel.Result{
-		TunnelQueryId: tunnelQueryID,
-		Result:        string(result),
-	}
+	return string(result), clickhouseQueryID, nil, nil
 }
