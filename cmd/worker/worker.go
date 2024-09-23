@@ -261,7 +261,12 @@ func (c *Command) newTunnelConn(ctx context.Context, tunnelID uuid.UUID, endpoin
 		slog.Info("no new clickhouse migrations")
 	}
 
-	ws, resp, err := websocket.Dial(ctx, endpoint, nil)
+	slog.Debug("connecting to tunnel websocket", "tunnelID", tunnelID, "role", "worker")
+	ws, resp, err := websocket.Dial(ctx, endpoint, &websocket.DialOptions{
+		HTTPHeader: http.Header{
+			"x-subtrace-tags": {fmt.Sprintf("subtrace_tunnel_id=%q subtrace_tunnel_side=%q", tunnelID, "sink")},
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("dial: %w", err)
 	}
