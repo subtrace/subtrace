@@ -253,6 +253,22 @@ func (p *proxy) proxyHTTP(cli, srv *bufConn) error {
 	}
 }
 
+func (p *proxy) discardMulti(r ...io.Reader) error {
+	var wg sync.WaitGroup
+	errs := make([]error, len(r), len(r))
+	for i := 0; i < len(r); i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if _, err := io.Copy(io.Discard, r[i]); err != nil {
+				errs[i] = fmt.Errorf("discard r[%d]: %w", i, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	return errors.Join(errs...)
+}
+
 func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 	errs := make(chan error, 3)
 
@@ -260,12 +276,11 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 	sr, sw := io.Pipe()
 
 	go func() {
-		defer func() { go io.Copy(io.Discard, cr) }()
-		defer func() { go io.Copy(io.Discard, sr) }()
+		bcr, bsr := bufio.NewReader(cr), bufio.NewReader(sr)
+		defer p.discardMulti(bcr, bsr)
 
-		cr, sr := bufio.NewReader(cr), bufio.NewReader(sr)
 		for {
-			req, err := http.ReadRequest(cr)
+			req, err := http.ReadRequest(bcr)
 			switch {
 			case err == nil:
 			case errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed):
@@ -278,6 +293,7 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 
 			begin := time.Now()
 			ev := event.NewFromTemplate(p.tmpl)
+			eventID := ev.Get("event_id")
 
 			if req.Body != nil {
 				ch := ev.NewLazy("http_req_body_size_bytes_wire")
@@ -328,7 +344,7 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				ev.Set("http_req_x_forwarded_for", val)
 			}
 
-			resp, err := http.ReadResponse(sr, req)
+			resp, err := http.ReadResponse(bsr, req)
 			switch {
 			case err == nil:
 			case errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed):
@@ -377,6 +393,17 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				tags += " " + val
 			}
 			tracer.DefaultManager.Insert(tags)
+
+			if resp.StatusCode == http.StatusSwitchingProtocols {
+				// We don't support other protocols at the moment (e.g. websocket).
+				slog.Debug("proxy: dropping into fallback copy after status 101 Switching Protocols", "proxy", p, "eventID", eventID, "tags.http_req_upgrade", req.Header.Get("upgrade"))
+				if err := p.discardMulti(bcr, bsr); err != nil {
+					errs <- fmt.Errorf("discard after HTTP 101: %w", err)
+					return
+				}
+				errs <- nil
+				return
+			}
 		}
 	}()
 
