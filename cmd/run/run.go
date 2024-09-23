@@ -32,6 +32,7 @@ import (
 	"subtrace.dev/cmd/run/internal/tags/gcptags"
 	"subtrace.dev/cmd/run/internal/tags/kubetags"
 	"subtrace.dev/cmd/run/kernel"
+	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/cmd/run/tracer"
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/event"
@@ -279,6 +280,10 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	}
 
 	go c.watchSignals()
+
+	if err := tls.GenerateEphemeralCA(); err != nil {
+		return 0, fmt.Errorf("create ephemeral TLS CA: %w", err)
+	}
 
 	c.initEventBase()
 
