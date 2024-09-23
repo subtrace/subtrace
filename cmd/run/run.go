@@ -41,7 +41,7 @@ import (
 
 type Command struct {
 	flags struct {
-		log   bool
+		log   *string
 		pprof string
 	}
 
@@ -56,7 +56,7 @@ func NewCommand() *ffcli.Command {
 	c.ShortHelp = "run a command with subtrace"
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
-	c.FlagSet.BoolVar(&c.flags.log, "log", false, "log HTTP trace events to stderr")
+	c.flags.log = c.FlagSet.String("log", "", "if true, log trace events to stderr")
 	c.FlagSet.StringVar(&c.flags.pprof, "pprof", "", "write pprof CPU profile to file")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose debug logging")
 	c.UsageFunc = func(fc *ffcli.Command) string {
@@ -110,10 +110,6 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		c.FlagSet.SetOutput(os.Stdout)
 		c.FlagSet.Usage()
 		return nil
-	}
-
-	if val := os.Getenv("SUBTRACE_TOKEN"); val == "" {
-		return fmt.Errorf("SUBTRACE_TOKEN is empty")
 	}
 
 	slog.Debug("starting tracer", "parent", os.Getenv("_SUBTRACE_CHILD") == "", "release", version.Release, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
@@ -279,6 +275,29 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		defer pprof.StopCPUProfile()
 	}
 
+	log := ""
+	if c.flags.log != nil {
+		log = strings.ToLower(*c.flags.log)
+	}
+	switch log {
+	case "y", "yes", "t", "true", "1":
+		tracer.DefaultManager.SetLog(true)
+
+	case "n", "no", "f", "false", "0":
+		if val := os.Getenv("SUBTRACE_TOKEN"); val == "" {
+			fmt.Fprintf(os.Stderr, "WARN: subtrace was started with -log=%q but SUBTRACE_TOKEN is empty\n", *c.flags.log)
+		}
+		tracer.DefaultManager.SetLog(false)
+
+	default:
+		if c.flags.log != nil && *c.flags.log != "" {
+			return 0, fmt.Errorf("unknown -log value: %q", *c.flags.log)
+		}
+		if val := os.Getenv("SUBTRACE_TOKEN"); val == "" {
+			tracer.DefaultManager.SetLog(true)
+		}
+	}
+
 	go c.watchSignals()
 
 	if err := tls.GenerateEphemeralCA(); err != nil {
@@ -287,7 +306,6 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 
 	c.initEventBase()
 
-	tracer.DefaultManager.SetLog(c.flags.log)
 	go tracer.DefaultManager.StartBackgroundFlush(ctx)
 	defer func() {
 		if err := tracer.DefaultManager.Flush(); err != nil {
