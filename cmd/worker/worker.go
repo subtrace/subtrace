@@ -200,7 +200,7 @@ func (c *Command) loop(ctx context.Context) error {
 				known[tunnelID] = struct{}{}
 				go func(i int) {
 					start := time.Now()
-					slog.Debug("initializing new tunnel", "tunnelID", tunnelID, "role", tunnels[i].Role, "namespaceID", namespaceID)
+					slog.Debug("handling new tunnel", "tunnelID", tunnelID, "role", tunnels[i].Role, "namespaceID", namespaceID)
 					defer func() { slog.Debug("finished handling tunnel", "tunnelID", tunnelID, "time", time.Since(start)) }()
 
 					tc, err := c.newTunnelConn(ctx, tunnelID, tunnels[i].Endpoint, tunnels[i].Role, namespaceID)
@@ -251,14 +251,13 @@ func (c *Command) newTunnelConn(ctx context.Context, tunnelID uuid.UUID, endpoin
 		worker:      c,
 	}
 
+	slog.Debug("applying clickhouse migrations for tunnel", "tunnelID", tunnelID, "namespaceID", namespaceID)
 	applied, err := c.clickhouse.ApplyMigrations(ctx, tc.suffix())
 	if err != nil {
 		return nil, fmt.Errorf("apply migrations: %w", err)
 	}
 	if applied > 0 {
-		slog.Info(fmt.Sprintf("applied %d new clickhouse migrations", applied))
-	} else {
-		slog.Info("no new clickhouse migrations")
+		slog.Debug("applied new postgres migrations", "tunnelID", tunnelID, "applied", applied)
 	}
 
 	slog.Debug("connecting to tunnel websocket", "tunnelID", tunnelID, "role", "worker")
@@ -508,7 +507,13 @@ func (tc *tunnelConn) handleSelect(ctx context.Context, q *tunnel.Select) *tunne
 	return tc.runQuery(ctx, q.TunnelQueryId, q.SqlStatement, nil)
 }
 
-func (tc *tunnelConn) runQuery(ctx context.Context, tunnelQueryID string, query string, data io.Reader) *tunnel.Result {
+func (tc *tunnelConn) runQuery(ctx context.Context, tunnelQueryID string, query string, data io.Reader) (res *tunnel.Result) {
+	start := time.Now()
+	slog.Debug("proxying query to clickhouse", "tunnelID", tc.tunnelID, "tunnelQueryID", tunnelQueryID)
+	defer func() {
+		slog.Debug("finished proxying query to clickhouse", "tunnelID", tc.tunnelID, "tunnelQueryID", tunnelQueryID, slog.Group("result", "bytes", len(res.Result), "clickhouseQueryID", res.ClickhouseQueryId, "clickhouseErr", res.ClickhouseError, "tunnelErr", res.TunnelError), "took", time.Since(start))
+	}()
+
 	result, clickhouseQueryID, clickhouseErr, tunnelErr := tc.proxyClickhouse(ctx, query, data)
 	if tunnelErr != nil {
 		return &tunnel.Result{
