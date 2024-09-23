@@ -770,7 +770,7 @@ func (s *Socket) Accept(flags int) (*Socket, syscall.Errno, error) {
 		return nil, unix.EBADF, nil
 	}
 
-	ret, sa, err := unix.Accept(s.FD.FD())
+	ret, sa, err := unix.Accept4(s.FD.FD(), flags|unix.SOCK_CLOEXEC)
 	if err != nil {
 		var errno syscall.Errno
 		if !errors.As(err, &errno) {
