@@ -800,7 +800,7 @@ func (s *Socket) Accept(flags int) (*Socket, syscall.Errno, error) {
 	}
 	slog.Debug("accepter dequeued accepted connection", "sock", s, "addr", addr)
 
-	child := &Socket{Domain: s.Domain}
+	child := &Socket{Domain: s.Domain, tmpl: s.tmpl}
 	child.FD = fd.NewFD(ret)
 	defer child.FD.DecRef()
 
