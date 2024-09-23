@@ -107,6 +107,10 @@ func doInsert(ctx context.Context, conn *websocket.Conn, events []string) (int, 
 }
 
 func (b *block) flush(ctx context.Context) error {
+	if os.Getenv("SUBTRACE_TOKEN") == "" {
+		return nil
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
