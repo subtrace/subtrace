@@ -39,7 +39,12 @@ func (b *block) insert(event string) bool {
 
 func initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string) (_ *websocket.Conn, finalErr error) {
 	slog.Debug("initializing tunnel session", "tunnelID", tunnelID, "role", tunnel.Role_INSERT)
-	conn, resp, err := websocket.Dial(ctx, endpoint, nil)
+
+	conn, resp, err := websocket.Dial(ctx, endpoint, &websocket.DialOptions{
+		HTTPHeader: http.Header{
+			"x-subtrace-tags": {fmt.Sprintf("subtrace_tunnel_id=%q subtrace_tunnel_side=%q", tunnelID, "source")},
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("dial: %w", err)
 	}
