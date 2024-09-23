@@ -16,21 +16,18 @@ import (
 	"math/big"
 	"net"
 	"os"
-	"sync"
 	"time"
 )
 
 var (
-	generateOnce  sync.Once
-	generateErr   error
 	generatedCert *x509.Certificate
 	generatedKey  *ecdsa.PrivateKey
 )
 
-// generateEphemeralCA creates an in-memory ephemeral CA certificate and
+// GenerateEphemeralCA creates an in-memory ephemeral CA certificate and
 // private key that will be used to transparently intercept, decrypt and
 // re-encrypt outgoing TLS requests.
-func generateEphemeralCA() error {
+func GenerateEphemeralCA() error {
 	if generatedCert != nil || generatedKey != nil {
 		return fmt.Errorf("ephemeral CA already exists")
 	}
@@ -82,19 +79,14 @@ func generateEphemeralCA() error {
 
 // GetEphemeralCAPEM returns the PEM-encoded ephemeral CA certificate bytes
 // that should be appended to the system root CA certificate file.
-func GetEphemeralCAPEM() ([]byte, error) {
-	generateOnce.Do(func() { generateErr = generateEphemeralCA() })
-	if generateErr != nil {
-		return nil, fmt.Errorf("generate ephemeral CA: %w", generateErr)
-	}
-
+func GetEphemeralCAPEM() []byte {
 	var b []byte
 	b = append(b, "\n"...)
 	b = append(b, generatedCert.Subject.CommonName...)
 	b = append(b, "\n"...)
 	b = append(b, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: generatedCert.Raw})...)
 	b = append(b, "\n"...)
-	return b, nil
+	return b
 }
 
 // ref: https://serverfault.com/a/722646
