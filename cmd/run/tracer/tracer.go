@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"os"
 	"sync"
@@ -25,13 +26,17 @@ type block struct {
 	mu     sync.Mutex
 	events []string
 	frozen bool
+	count  atomic.Uint64 // approx number of events
+	bytes  atomic.Uint64 // approx total size
 }
 
 func (b *block) reset() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.frozen = false
 	b.events = nil
+	b.frozen = false
+	b.count.Store(0)
+	b.bytes.Store(0)
 }
 
 func (b *block) insert(event string) bool {
@@ -41,6 +46,8 @@ func (b *block) insert(event string) bool {
 		return false
 	}
 	b.events = append(b.events, event)
+	b.count.Add(1)
+	b.bytes.Add(uint64(len(event)))
 	return true
 }
 
@@ -113,11 +120,15 @@ func doInsert(ctx context.Context, conn *websocket.Conn, events []string) (int, 
 	return len(qmsg), nil
 }
 
-func (b *block) flush(ctx context.Context) error {
-	if os.Getenv("SUBTRACE_TOKEN") == "" {
-		return nil
-	}
+func (b *block) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.Attr{Key: "ptr", Value: slog.StringValue(fmt.Sprintf("%p", b))},
+		slog.Attr{Key: "count", Value: slog.Uint64Value(b.count.Load())},
+		slog.Attr{Key: "bytes", Value: slog.Uint64Value(b.bytes.Load())},
+	)
+}
 
+func (b *block) flushOnce(ctx context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -125,8 +136,10 @@ func (b *block) flush(ctx context.Context) error {
 		return fmt.Errorf("block already frozen")
 	}
 	b.frozen = true
-	defer func() { b.frozen = false }()
 
+	// Check the actual array instead of count to see if the block is empty.
+	// b.count exists only because it's nice to log the approximate size of the
+	// data in the block without locking it.
 	if len(b.events) == 0 {
 		return nil
 	}
@@ -146,25 +159,47 @@ func (b *block) flush(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("parse tunnelID: %w", err)
 	}
+	slog.Debug("created tunnel to push event buffer block", "block", b, "tunnelID", tunnelID)
 
 	start := time.Now()
 	conn, err := initTunnel(ctx, tunnelID, tun.Endpoint)
 	if err != nil {
 		var wsErr websocket.CloseError
 		if errors.As(err, &wsErr) && wsErr.Code == websocket.StatusGoingAway {
-			// TODO: should we retry?
 			return fmt.Errorf("init tunnel: tunnel %s: timed out waiting for sink after %v", tunnelID.String(), time.Since(start))
 		}
 		return fmt.Errorf("init tunnel: tunnel %s: %w", tunnelID, err)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
-	size, err := doInsert(ctx, conn, b.events)
-	if err != nil {
-		return fmt.Errorf("do insert (events=%d, size=%d): %w", len(b.events), size, err)
+	if _, err := doInsert(ctx, conn, b.events); err != nil {
+		return fmt.Errorf("insert %d events (%d bytes): %w", b.count.Load(), b.bytes.Load(), err)
 	}
 
-	slog.Debug("flushed data to clickhouse", "events", len(b.events), "size", size, "took", time.Since(start).Round(time.Millisecond))
+	slog.Debug("flushed data to clickhouse", "block", b, "took", time.Since(start).Round(time.Millisecond))
+	return nil
+}
+
+func (b *block) flush(ctx context.Context) error {
+	if os.Getenv("SUBTRACE_TOKEN") == "" {
+		return nil
+	}
+
+	slog.Debug("flushing event buffer block", "block", b)
+	err := b.flushOnce(ctx)
+	if err == nil {
+		return nil
+	}
+
+	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	wait := 5000 + time.Duration(rand.Intn(5000))*time.Millisecond
+	slog.Debug("failed to flush block, retrying after backoff wait", "block", b, "err", err, "wait", wait)
+	time.Sleep(wait)
+
+	if err := b.flushOnce(ctx); err != nil {
+		slog.Debug("failed to flush block after retry, dropping all events in block", "block", b, "err", err)
+		return err
+	}
 	return nil
 }
 
@@ -180,6 +215,19 @@ func newManager() *Manager {
 	return m
 }
 
+func (m *Manager) put(b *block) {
+	b.reset()
+	m.pool.Put(b)
+}
+
+func (m *Manager) finalize(b *block) error {
+	defer m.put(b)
+	if err := b.flush(context.TODO()); err != nil {
+		return fmt.Errorf("flush: %w", err)
+	}
+	return nil
+}
+
 func (m *Manager) Insert(event string) {
 	if m.log.Load() {
 		fmt.Fprintf(os.Stderr, "%s\n", event)
@@ -190,8 +238,7 @@ func (m *Manager) Insert(event string) {
 		cur := m.cur.Load()
 		if cur.insert(event) {
 			if next != nil {
-				next.reset()
-				m.pool.Put(next)
+				m.put(next)
 			}
 			return
 		}
@@ -201,15 +248,8 @@ func (m *Manager) Insert(event string) {
 		}
 
 		if m.cur.CompareAndSwap(cur, next) {
+			go m.finalize(cur)
 			next = nil
-			go func() {
-				err := cur.flush(context.TODO())
-				cur.reset()
-				m.pool.Put(cur)
-				if err != nil {
-					slog.Error("failed to flush block", "err", err)
-				}
-			}()
 		}
 	}
 }
@@ -219,10 +259,7 @@ func (m *Manager) Flush() error {
 	for {
 		cur := m.cur.Load()
 		if m.cur.CompareAndSwap(cur, next) {
-			err := cur.flush(context.Background())
-			cur.reset()
-			m.pool.Put(cur)
-			return err
+			return m.finalize(cur)
 		}
 	}
 }
@@ -232,10 +269,11 @@ func (m *Manager) SetLog(log bool) {
 }
 
 func (m *Manager) StartBackgroundFlush(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+	period := 5 * time.Second
+	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 
-	backoff := 0
+	var backoff time.Duration
 	for {
 		select {
 		case <-ctx.Done():
@@ -243,23 +281,24 @@ func (m *Manager) StartBackgroundFlush(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		if backoff > 0 {
-			backoff--
+		if backoff >= period {
+			slog.Debug("skipping background flush tick due to remaining backoff timer", "backoff", backoff)
+			backoff -= period
 			continue
+		} else {
+			backoff = 0
 		}
 
 		if err := m.Flush(); err != nil {
 			slog.Error("failed to flush block", "err", err)
-			if backoff == 0 {
-				backoff = 1
+			if backoff < period {
+				backoff += time.Second
 			} else {
 				backoff *= 2
 			}
-			if backoff > 30 {
-				backoff = 30
+			if backoff > time.Minute {
+				backoff = time.Minute
 			}
-		} else {
-			backoff = 0
 		}
 	}
 }
