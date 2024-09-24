@@ -27,6 +27,13 @@ type block struct {
 	frozen bool
 }
 
+func (b *block) reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.frozen = false
+	b.events = nil
+}
+
 func (b *block) insert(event string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -183,6 +190,7 @@ func (m *Manager) Insert(event string) {
 		cur := m.cur.Load()
 		if cur.insert(event) {
 			if next != nil {
+				next.reset()
 				m.pool.Put(next)
 			}
 			return
@@ -196,6 +204,7 @@ func (m *Manager) Insert(event string) {
 			next = nil
 			go func() {
 				err := cur.flush(context.TODO())
+				cur.reset()
 				m.pool.Put(cur)
 				if err != nil {
 					slog.Error("failed to flush block", "err", err)
@@ -211,6 +220,7 @@ func (m *Manager) Flush() error {
 		cur := m.cur.Load()
 		if m.cur.CompareAndSwap(cur, next) {
 			err := cur.flush(context.Background())
+			cur.reset()
 			m.pool.Put(cur)
 			return err
 		}
