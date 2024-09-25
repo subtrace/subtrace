@@ -4,7 +4,7 @@ set -eo pipefail
 
 cmd:subtrace() {
   SUBTRACE_RELEASE_VERSION=$(printf "b%03d" "$(git log --oneline | wc -l)")
-  SUBTRACE_COMMIT_HASH="$(git log -1 --format='%H' 2>/dev/null || echo unknown)"
+  SUBTRACE_COMMIT_HASH="$(git describe --match="" --always --dirty 2>/dev/null || echo unknown)"
   SUBTRACE_COMMIT_TIME=$(TZ=UTC git log -1 --date='format-local:%Y-%m-%dT%H:%M:%SZ' --format='%cd' 2>/dev/null || echo unknown)
   SUBTRACE_BUILD_TIME="${SOURCE_DATE_EPOCH}"
   if [[ "${SUBTRACE_BUILD_TIME}" == "" ]]; then
