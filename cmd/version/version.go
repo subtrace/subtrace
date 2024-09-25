@@ -15,11 +15,15 @@ import (
 )
 
 var (
-	Release    = "unknown"
+	Release    = "b000"
 	CommitHash = "unknown"
 	CommitTime = "unknown"
 	BuildTime  = "unknown"
 )
+
+func GetCanonicalString() string {
+	return fmt.Sprintf("%s-%s", Release, CommitHash)
+}
 
 type Command struct {
 	flags struct {

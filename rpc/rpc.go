@@ -14,6 +14,8 @@ import (
 	"os"
 	"time"
 
+	"subtrace.dev/cmd/version"
+
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -23,6 +25,17 @@ type Option func(*http.Request) error
 func WithoutAuth() Option {
 	return func(r *http.Request) error {
 		r.Header.Del("authorization")
+		return nil
+	}
+}
+
+func WithTag(key string, val string) Option {
+	return func(r *http.Request) error {
+		full := fmt.Sprintf("%s=%q", key, val)
+		if prev := r.Header.Get("x-subtrace-tags"); prev != "" {
+			full = prev + " " + full
+		}
+		r.Header.Set("x-subtrace-tags", full)
 		return nil
 	}
 }
@@ -41,6 +54,8 @@ func Call[R any, PR ptr[R]](ctx context.Context, w proto.Message, path string, r
 	}
 
 	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", os.Getenv("SUBTRACE_TOKEN")))
+
+	opts = append(opts, WithTag("subtrace_client_version", version.GetCanonicalString()))
 
 	var errs []error
 	for _, opt := range opts {
