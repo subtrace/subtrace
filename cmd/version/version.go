@@ -1,14 +1,19 @@
 package version
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"runtime/debug"
+	"sync"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"golang.org/x/sys/unix"
@@ -21,8 +26,43 @@ var (
 	BuildTime  = "unknown"
 )
 
+func getExecutableHashInner() (string, error) {
+	path, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("get executable: %w", err)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open executable: %w", err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, bufio.NewReader(io.LimitReader(f, 64<<20))); err != nil {
+		return "", fmt.Errorf("copy hash: %w", err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+var executableHashOnce sync.Once
+var executableHash = "unknown"
+
+func getExecutableHash() string {
+	executableHashOnce.Do(func() {
+		if hash, err := getExecutableHashInner(); err == nil {
+			executableHash = hash
+		}
+	})
+	return executableHash
+}
+
 func GetCanonicalString() string {
-	return fmt.Sprintf("%s-%s", Release, CommitHash)
+	ret := fmt.Sprintf("%s-%s", Release, CommitHash)
+	if Release == "b000" && CommitHash == "unknown" {
+		ret += getExecutableHash()
+	}
+	return ret
 }
 
 type Command struct {
@@ -103,6 +143,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 			"buildGoVersion": buildGoVersion,
 			"buildOS":        buildOS,
 			"buildArch":      buildArch,
+			"executableHash": getExecutableHash(),
 			"kernelName":     kernelName,
 			"kernelVersion":  kernelVersion,
 			"kernelArch":     kernelArch,
@@ -115,7 +156,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 
 	fmt.Printf("%s\n", Release)
 	fmt.Printf("  commit %s at %s\n", CommitHash, CommitTime)
-	fmt.Printf("  built with %s %s/%s at %s\n", buildGoVersion, buildOS, buildArch, BuildTime)
+	fmt.Printf("  built with %s %s/%s at %s hash %s\n", buildGoVersion, buildOS, buildArch, BuildTime, getExecutableHash())
 	fmt.Printf("  kernel %s %s on %s\n", kernelName, kernelVersion, kernelArch)
 	fmt.Printf("  running on %s/%s with uid %d gid %d\n", runtime.GOOS, runtime.GOARCH, os.Geteuid(), os.Getgid())
 	fmt.Printf("  effective caps %s\n", effectiveCaps)
