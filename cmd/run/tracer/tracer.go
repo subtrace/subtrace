@@ -55,9 +55,11 @@ func initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string) (_ *we
 	slog.Debug("initializing tunnel session", "tunnelID", tunnelID, "role", tunnel.Role_INSERT)
 
 	conn, resp, err := websocket.Dial(ctx, endpoint, &websocket.DialOptions{
-		HTTPHeader: http.Header{
-			"x-subtrace-tags": {fmt.Sprintf("subtrace_tunnel_id=%q subtrace_tunnel_side=%q", tunnelID, "source")},
-		},
+		HTTPHeader: rpc.GetHeader(
+			rpc.WithoutToken(),
+			rpc.WithTag("subtrace_tunnel_id", tunnelID.String()),
+			rpc.WithTag("subtrace_tunnel_side", "sink"),
+		),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("dial: %w", err)

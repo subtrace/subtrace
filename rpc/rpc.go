@@ -20,24 +20,44 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type Option func(*http.Request) error
+type Option func(*http.Request)
 
-func WithoutAuth() Option {
-	return func(r *http.Request) error {
+func WithToken() Option {
+	return func(r *http.Request) {
+		if val := os.Getenv("SUBTRACE_TOKEN"); val != "" {
+			r.Header.Set("authorization", fmt.Sprintf("Bearer %s", val))
+		}
+	}
+}
+
+func WithoutToken() Option {
+	return func(r *http.Request) {
 		r.Header.Del("authorization")
-		return nil
 	}
 }
 
 func WithTag(key string, val string) Option {
-	return func(r *http.Request) error {
+	return func(r *http.Request) {
 		full := fmt.Sprintf("%s=%q", key, val)
 		if prev := r.Header.Get("x-subtrace-tags"); prev != "" {
 			full = prev + " " + full
 		}
 		r.Header.Set("x-subtrace-tags", full)
-		return nil
 	}
+}
+
+var defaultOptions = []Option{
+	WithToken(),
+	WithTag("subtrace_client_version", version.GetCanonicalString()),
+}
+
+func GetHeader(opts ...Option) http.Header {
+	r := new(http.Request)
+	r.Header = make(http.Header)
+	for _, opt := range append(defaultOptions, opts...) {
+		opt(r)
+	}
+	return r.Header
 }
 
 func Call[R any, PR ptr[R]](ctx context.Context, w proto.Message, path string, r *R, opts ...Option) (int, error) {
@@ -52,19 +72,8 @@ func Call[R any, PR ptr[R]](ctx context.Context, w proto.Message, path string, r
 	if err != nil {
 		return 0, fmt.Errorf("new request: %w", err)
 	}
-
-	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", os.Getenv("SUBTRACE_TOKEN")))
-
-	opts = append(opts, WithTag("subtrace_client_version", version.GetCanonicalString()))
-
-	var errs []error
-	for _, opt := range opts {
-		if err := opt(req); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if len(errs) > 0 {
-		return 0, fmt.Errorf("apply options on request: %w", err)
+	for _, opt := range append(defaultOptions, opts...) {
+		opt(req)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
