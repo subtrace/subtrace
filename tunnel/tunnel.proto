@@ -52,10 +52,16 @@ message Select {
   string sql_statement = 2;
 }
 
+enum CompressionMode {
+  COMPRESSION_NONE = 0;
+  COMPRESSION_GZIP = 1;
+}
+
 message Result {
   string tunnel_query_id = 1;
   string tunnel_error = 2;
   string clickhouse_query_id = 3;
   string clickhouse_error = 4;
-  string result = 5;
+  CompressionMode compression_mode = 5;
+  bytes compressed_data = 6;
 }
