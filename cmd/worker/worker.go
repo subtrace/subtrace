@@ -6,6 +6,7 @@ package worker
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -512,13 +513,27 @@ func (tc *tunnelConn) handleSelect(ctx context.Context, q *tunnel.Select) *tunne
 }
 
 func (tc *tunnelConn) runQuery(ctx context.Context, tunnelQueryID string, query string, data io.Reader) (res *tunnel.Result) {
-	start := time.Now()
+	start, rawSize, compressedSize := time.Now(), -1, -1
 	slog.Debug("proxying query to clickhouse", "tunnelID", tc.tunnelID, "tunnelQueryID", tunnelQueryID)
 	defer func() {
-		slog.Debug("finished proxying query to clickhouse", "tunnelID", tc.tunnelID, "tunnelQueryID", tunnelQueryID, slog.Group("result", "bytes", len(res.Result), "clickhouseQueryID", res.ClickhouseQueryId, "clickhouseErr", res.ClickhouseError, "tunnelErr", res.TunnelError), "took", time.Since(start))
+		slog.Debug(
+			"finished proxying query to clickhouse",
+			"tunnelID", tc.tunnelID,
+			"tunnelQueryID", tunnelQueryID,
+			slog.Group(
+				"result",
+				"clickhouseQueryID", res.ClickhouseQueryId,
+				"clickhouseErr", res.ClickhouseError,
+				"tunnelErr", res.TunnelError,
+				"compression", res.CompressionMode,
+				"rawSize", rawSize,
+				"compressedSize", compressedSize,
+			),
+			"took", time.Since(start),
+		)
 	}()
 
-	result, clickhouseQueryID, clickhouseErr, tunnelErr := tc.proxyClickhouse(ctx, query, data)
+	resultData, clickhouseQueryID, clickhouseErr, tunnelErr := tc.proxyClickhouse(ctx, query, data)
 	if tunnelErr != nil {
 		return &tunnel.Result{
 			TunnelQueryId:     tunnelQueryID,
@@ -533,10 +548,41 @@ func (tc *tunnelConn) runQuery(ctx context.Context, tunnelQueryID string, query 
 			ClickhouseError:   clickhouseErr.Error(),
 		}
 	}
+
+	rawSize = len(resultData)
+	if rawSize < 4096 {
+		compressedSize = len(resultData)
+		return &tunnel.Result{
+			TunnelQueryId:     tunnelQueryID,
+			ClickhouseQueryId: clickhouseQueryID,
+			CompressionMode:   tunnel.CompressionMode_COMPRESSION_NONE,
+			CompressedData:    []byte(resultData),
+		}
+	}
+
+	b := new(bytes.Buffer)
+	w := gzip.NewWriter(b)
+	if _, err := w.Write([]byte(resultData)); err != nil {
+		return &tunnel.Result{
+			TunnelQueryId:     tunnelQueryID,
+			ClickhouseQueryId: clickhouseQueryID,
+			TunnelError:       fmt.Errorf("compress: write: %w", err).Error(),
+		}
+	}
+	if err := w.Close(); err != nil {
+		return &tunnel.Result{
+			TunnelQueryId:     tunnelQueryID,
+			ClickhouseQueryId: clickhouseQueryID,
+			TunnelError:       fmt.Errorf("compress: close: %w", err).Error(),
+		}
+	}
+
+	compressedSize = len(b.Bytes())
 	return &tunnel.Result{
 		TunnelQueryId:     tunnelQueryID,
 		ClickhouseQueryId: clickhouseQueryID,
-		Result:            result,
+		CompressionMode:   tunnel.CompressionMode_COMPRESSION_GZIP,
+		CompressedData:    b.Bytes(),
 	}
 }
 
