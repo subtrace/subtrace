@@ -4,19 +4,24 @@
 package engine
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/engine/process"
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/syscalls"
+	"subtrace.dev/cmd/version"
 )
 
 type Engine struct {
@@ -25,6 +30,7 @@ type Engine struct {
 	processes map[int]*process.Process
 	threads   map[int]*process.Process
 	running   chan struct{}
+	inPanic   atomic.Bool
 }
 
 func New(seccomp *seccomp.Listener, root *process.Process) *Engine {
@@ -127,6 +133,49 @@ func (e *Engine) Wait() {
 	<-e.running
 }
 
+func (e *Engine) panicGuard(main, failed chan *seccomp.Notif) {
+	err := recover()
+	if err == nil {
+		return
+	}
+
+	stack := debug.Stack()
+	e.inPanic.Store(true)
+
+	b := new(bytes.Buffer)
+	fmt.Fprintf(b, "subtrace: engine panic: %v\n", err)
+	fmt.Fprintf(b, "\n")
+	fmt.Fprintf(b, "-----BEGIN SUBTRACE CRASH REPORT-----\n")
+	fmt.Fprintf(b, "time: %s\n", time.Now().Format(time.RFC3339Nano))
+	fmt.Fprintf(b, "version: %s\n", version.Full(false))
+	fmt.Fprintf(b, "panic: %+v\n", err)
+	fmt.Fprintf(b, "stack trace: %s\n", strings.TrimSpace(string(stack)))
+	fmt.Fprintf(b, "-----END SUBTRACE CRASH REPORT-----\n")
+	fmt.Fprintf(b, "\n")
+	fmt.Fprintf(b, "[CRITICAL] !!! Subtrace encountered a critical error. The tracing engine will\n")
+	fmt.Fprintf(b, "[CRITICAL] !!! now enter safe mode. New requests will no longer be traced.\n")
+	fmt.Fprintf(b, "[CRITICAL] !!! We're sorry about this. Please consider filing a bug report at\n")
+	fmt.Fprintf(b, "[CRITICAL] !!! https://github.com/subtrace/subtrace with the above crash report.\n")
+	fmt.Fprintf(b, "\n")
+
+	// Write all the bytes at once so that there's as little interference between
+	// different processes writing to stderr at the same time. The tracer NEVER
+	// writes to stdout or stderr for this exact reason (unless it is started
+	// with -v or -log=true), but this is the exception to the rule.
+	os.Stderr.Write(b.Bytes())
+
+	go e.drainSafeMode(failed)
+	e.drainSafeMode(main)
+}
+
+func (e *Engine) drainSafeMode(ch chan *seccomp.Notif) {
+	for n := range ch {
+		if n != nil {
+			n.Skip()
+		}
+	}
+}
+
 func (e *Engine) handle(n *seccomp.Notif) {
 	handler := process.Handlers[n.Syscall]
 	if handler == nil {
@@ -145,57 +194,47 @@ func (e *Engine) handle(n *seccomp.Notif) {
 	}
 }
 
-func (e *Engine) runSimple() {
-	slog.Debug("starting simple receive-handle loop")
-	defer slog.Debug("finished simple receive-handle loop")
+// Start receives and handles intercepted syscalls until all processes exit.
+func (e *Engine) Start() {
+	N := runtime.NumCPU()
 
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	for e.countRunning() > 0 {
-		n, errno := e.seccomp.Receive()
-		switch errno {
-		case 0:
-			e.handle(n)
-		case unix.ENOENT:
-			// The target was killed by a signal or its syscall was interrupted by a
-			// signal handler.
-			continue
-		case unix.EBADF:
-			// The seccomp listener file descriptor was closed.
-			return
-		default:
-			if left := e.countRunning(); left > 0 {
-				slog.Error("failed to receive seccomp notification", "processes", left, "err", errno)
-			}
-			return
-		}
-	}
-}
-
-// runParallel runs N parallel handler goroutines (parallel and not concurrent
-// because each goroutine is locked to an OS thread and there will be as many
-// OS threads as CPUs).
-func (e *Engine) runParallel(N int) {
 	var wg sync.WaitGroup
 	slog.Debug("starting parallel receive-dispatch-handle loop", "workers", N)
 	defer slog.Debug("finished parallel receive-dispatch-handle loop")
 
+	failed := make(chan *seccomp.Notif, N)
 	ch := make(chan *seccomp.Notif, N)
 	for i := 0; i < N; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			runtime.LockOSThread()
-			defer runtime.UnlockOSThread()
+
 			// TODO: sched_setaffinity to lock to CPU here? It'd be nice to have the
 			// system call handler run on the same CPU as the tracee process that is
 			// executing the system call.
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+
+			defer e.panicGuard(ch, failed)
+
+			var pending *seccomp.Notif
+			defer func() {
+				if pending != nil {
+					failed <- pending
+				}
+			}()
+
 			for n := range ch {
 				if n == nil {
 					break
 				}
+
+				pending = n
+				if e.inPanic.Load() {
+					return
+				}
 				e.handle(n)
+				pending = nil
 			}
 		}()
 	}
@@ -207,8 +246,11 @@ dispatch:
 		case 0:
 			ch <- n
 		case unix.ENOENT:
-			continue // see runSimple
+			// The target was killed by a signal or its syscall was interrupted by a
+			// signal handler.
+			continue
 		case unix.EBADF:
+			// The seccomp listener file descriptor was closed.
 			break dispatch
 		default:
 			if left := e.countRunning(); left > 0 {
@@ -222,18 +264,6 @@ dispatch:
 		ch <- nil
 	}
 	wg.Wait()
-}
-
-// Start receives and handles intercepted syscalls until all processes exit.
-func (e *Engine) Start() {
-	N := runtime.NumCPU()
-	if N <= 1 {
-		// If there aren't going to be multiple handler threads, there's no need to
-		// enqueue and dequeue from a channel pointlessly.
-		e.runSimple()
-		return
-	}
-	e.runParallel(N)
 }
 
 func getThreadGroupID(pid int) (int, error) {

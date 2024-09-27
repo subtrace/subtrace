@@ -96,6 +96,11 @@ func cstr(b []byte) string {
 }
 
 func (c *Command) entrypoint(ctx context.Context, args []string) error {
+	fmt.Printf("%s\n", Full(c.flags.json))
+	return nil
+}
+
+func Full(isJSON bool) string {
 	buildGoVersion, buildOS, buildArch := "unknown", "unknown", "unknown"
 	if info, ok := debug.ReadBuildInfo(); ok {
 		buildGoVersion = info.GoVersion
@@ -132,8 +137,9 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		}
 	}
 
-	if c.flags.json {
-		enc := json.NewEncoder(os.Stdout)
+	b := new(bytes.Buffer)
+	if isJSON {
+		enc := json.NewEncoder(b)
 		enc.SetIndent("", "  ")
 		enc.Encode(map[string]any{
 			"release":        Release,
@@ -151,16 +157,15 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 			"gid":            os.Getuid(),
 			"effectiveCaps":  effectiveCaps,
 		})
-		return nil
+	} else {
+		fmt.Fprintf(b, "%s\n", Release)
+		fmt.Fprintf(b, "  commit %s at %s\n", CommitHash, CommitTime)
+		fmt.Fprintf(b, "  built with %s %s/%s at %s hash %s\n", buildGoVersion, buildOS, buildArch, BuildTime, getExecutableHash())
+		fmt.Fprintf(b, "  kernel %s %s on %s\n", kernelName, kernelVersion, kernelArch)
+		fmt.Fprintf(b, "  running on %s/%s with uid %d gid %d\n", runtime.GOOS, runtime.GOARCH, os.Geteuid(), os.Getgid())
+		fmt.Fprintf(b, "  effective caps %s", effectiveCaps)
 	}
-
-	fmt.Printf("%s\n", Release)
-	fmt.Printf("  commit %s at %s\n", CommitHash, CommitTime)
-	fmt.Printf("  built with %s %s/%s at %s hash %s\n", buildGoVersion, buildOS, buildArch, BuildTime, getExecutableHash())
-	fmt.Printf("  kernel %s %s on %s\n", kernelName, kernelVersion, kernelArch)
-	fmt.Printf("  running on %s/%s with uid %d gid %d\n", runtime.GOOS, runtime.GOARCH, os.Geteuid(), os.Getgid())
-	fmt.Printf("  effective caps %s\n", effectiveCaps)
-	return nil
+	return b.String()
 }
 
 var capNames = []string{
