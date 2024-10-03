@@ -587,7 +587,7 @@ func (tc *tunnelConn) runQuery(ctx context.Context, tunnelQueryID string, query 
 }
 
 func (tc *tunnelConn) proxyClickhouse(ctx context.Context, query string, data io.Reader) (_ string, clickhouseQueryID string, clickhouseErr error, tunnelErr error) {
-	const maxResultBytes = 64 << 20
+	const maxResultBytes = 128 << 20
 
 	// 8123 is the ClickHouse HTTP default port
 	// ref: https://clickhouse.com/docs/en/guides/sre/network-ports
