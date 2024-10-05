@@ -314,7 +314,10 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	}()
 
 	pid, sec, err := c.forkChild()
-	if err != nil {
+	if errors.Is(err, errMissingSysPtrace) {
+		fmt.Fprintf(os.Stderr, "subtrace: error: %v: was subtrace started with the SYS_PTRACE capability?\n", err)
+		return 1, nil
+	} else if err != nil {
 		return 0, fmt.Errorf("exec child: %w", err)
 	}
 	if sec == nil {
@@ -399,6 +402,8 @@ func (c *Command) initEventBase() {
 	}
 }
 
+var errMissingSysPtrace = fmt.Errorf("missing SYS_PTRACE")
+
 // forkChild forks and re-executes the subtrace binary to run in child mode. It
 // returns the child PID and the installed seccomp_unotify listener.
 func (c *Command) forkChild() (pid int, sec *seccomp.Listener, err error) {
@@ -450,6 +455,10 @@ func (c *Command) forkChild() (pid int, sec *seccomp.Listener, err error) {
 
 	ret, err := unix.PidfdGetfd(pidfd, int(secfd), 0)
 	if err != nil {
+		var errno syscall.Errno
+		if errors.As(err, &errno) && errno == unix.EPERM {
+			return 0, nil, fmt.Errorf("pidfd_getfd: %w: %w", errno, errMissingSysPtrace)
+		}
 		return 0, nil, fmt.Errorf("pidfd_getfd: %w", err)
 	}
 	seccompfd := fd.NewFD(ret)
