@@ -26,6 +26,7 @@ type block struct {
 	mu     sync.Mutex
 	events []string
 	frozen bool
+	flushed bool
 	count  atomic.Uint64 // approx number of events
 	bytes  atomic.Uint64 // approx total size
 }
@@ -35,6 +36,7 @@ func (b *block) reset() {
 	defer b.mu.Unlock()
 	b.events = nil
 	b.frozen = false
+	b.flushed = false
 	b.count.Store(0)
 	b.bytes.Store(0)
 }
@@ -133,16 +135,17 @@ func (b *block) LogValue() slog.Value {
 func (b *block) flushOnce(ctx context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
-	if b.frozen {
-		return fmt.Errorf("block already frozen")
+	if b.flushed {
+		return fmt.Errorf("block already flushed")
 	}
+
 	b.frozen = true
 
 	// Check the actual array instead of count to see if the block is empty.
 	// b.count exists only because it's nice to log the approximate size of the
 	// data in the block without locking it.
 	if len(b.events) == 0 {
+		b.flushed = true
 		return nil
 	}
 
@@ -178,6 +181,7 @@ func (b *block) flushOnce(ctx context.Context) error {
 		return fmt.Errorf("insert %d events (%d bytes): %w", b.count.Load(), b.bytes.Load(), err)
 	}
 
+	b.flushed = true
 	slog.Debug("flushed data to clickhouse", "block", b, "took", time.Since(start).Round(time.Millisecond))
 	return nil
 }
