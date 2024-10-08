@@ -367,8 +367,10 @@ func (tc *tunnelConn) rebuildMaterializedView(ctx context.Context) error {
 			cols = append(cols, "coalesce(parseDateTime64BestEffort(tags['time'], 9, 'UTC'), now64(9)) AS `time`")
 		case "event_id":
 			cols = append(cols, "coalesce(toUUIDOrNull(tags['event_id']), generateUUIDv4()) AS `event_id`")
-		default:
+		case "service":
 			cols = append(cols, fmt.Sprintf("tags['%s'] AS `%s`", column, column))
+		default:
+			cols = append(cols, fmt.Sprintf("if(mapContains(tags, '%s'), tags['%s'], NULL) AS `%s`", column, column, column))
 		}
 	}
 
