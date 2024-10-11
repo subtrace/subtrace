@@ -21,6 +21,11 @@ import (
 	"subtrace.dev/cmd/run/syscalls"
 )
 
+const (
+	SECCOMP_FILTER_FLAG_TSYNC       = (1 << 0) // ref: https://elixir.bootlin.com/linux/v6.1.112/source/include/uapi/linux/seccomp.h#L21
+	SECCOMP_FILTER_FLAG_TSYNC_ESRCH = (1 << 4) // ref: https://elixir.bootlin.com/linux/v6.1.112/source/include/uapi/linux/seccomp.h#L25
+)
+
 var ErrCancelled = errors.New("seccomp user notification cancelled")
 
 // InstallFilter installs a seccomp BPF program to filter the system calls we
@@ -80,10 +85,30 @@ func InstallFilter(syscalls []int) (int, error) {
 	//   calling thread must have the CAP_SYS_ADMIN capability in its user
 	//   namespace, or the thread must already have the no_new_privs bit set.
 	if _, _, errno := unix.Syscall(unix.SYS_PRCTL, linux.PR_SET_NO_NEW_PRIVS, 1, 0); errno != 0 {
-		return 0, fmt.Errorf("seccomp: prctl: %w", errno)
+		return 0, fmt.Errorf("prctl: PR_SET_NO_NEW_PRIVS: %w", errno)
 	}
 
 	flags := uintptr(SECCOMP_FILTER_FLAG_NEW_LISTENER)
+
+	// We just did a PR_SET_NO_NEW_PRIVS and we'll later be doing a execve(2) to
+	// start the tracee process (see run.go). Let's say the PR_SET_NO_NEW_PRIVS=1
+	// is done by thread A, the execve is done by thread B, and thread B got
+	// created _before_ the prctl call. In this example, there's a race condition
+	// between these two steps where the tracee gets started with no_new_privs=0
+	// even though the prctl(PR_SET_NO_NEW_PRIVS, 1) returned success. By setting
+	// SECCOMP_FILTER_FLAG_TSYNC, we tell the kernel to synchronize all threads
+	// of the tracer to have the same seccomp settings in the seccomp(2) call
+	// below that does SECCOMP_SET_MODE_FILTER.
+	//
+	// For historical reasons, the flags SECCOMP_FILTER_FLAG_TSYNC and
+	// SECCOMP_FILTER_FLAG_NEW_LISTENER were declared to be mutually exclusive
+	// even though there's no real reason why they should be so [1]. The flag
+	// SECCOMP_FILTER_FLAG_TSYNC_ESRCH (introduced in Linux 5.7) allows using
+	// both at the same time.
+	//
+	// [1] https://github.com/torvalds/linux/commit/51891498f2da78ee64dfad88fa53c9e85fb50abf
+	flags |= uintptr(SECCOMP_FILTER_FLAG_TSYNC)
+	flags |= uintptr(SECCOMP_FILTER_FLAG_TSYNC_ESRCH)
 
 	// Setting SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV transitions the child
 	// process into "wait killable semantics" after the notification has been

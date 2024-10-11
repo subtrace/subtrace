@@ -241,6 +241,7 @@ const (
 	// required >= 5.0  (2019-03-03) for seccom_unotify(2)
 	// required >= 5.3  (2019-09-15) for pidfd_open(2)
 	// required >= 5.6  (2020-03-29) for pidfd_getfd(2)
+	// required >= 5.7  (2020-05-31) for SECCOMP_FILTER_FLAG_TSYNC_ESRCH
 	// required >= 5.9  (2020-10-11) for SECCOMP_IOCTL_NOTIF_ADDFD
 	// required >= 5.14 (2021-08-29) for SECCOMP_ADDFD_FLAG_SEND
 	//          >= 5.19 (2022-07-31) for SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV
