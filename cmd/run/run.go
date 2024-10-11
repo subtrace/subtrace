@@ -460,7 +460,7 @@ func (c *Command) forkChild() (pid int, sec *seccomp.Listener, err error) {
 		if errors.As(err, &errno) && errno == unix.EPERM {
 			return 0, nil, fmt.Errorf("pidfd_getfd: %w: %w", errno, errMissingSysPtrace)
 		}
-		return 0, nil, fmt.Errorf("pidfd_getfd: %w", err)
+		return 0, nil, fmt.Errorf("pidfd_getfd: %w (pidfd=%d, secfd=%d)", err, pidfd, secfd)
 	}
 	seccompfd := fd.NewFD(ret)
 	defer seccompfd.DecRef()
