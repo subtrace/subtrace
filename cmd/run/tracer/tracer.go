@@ -23,12 +23,12 @@ import (
 var DefaultManager = newManager()
 
 type block struct {
-	mu     sync.Mutex
-	events []string
-	frozen bool
+	mu      sync.Mutex
+	events  []string
+	frozen  bool
 	flushed bool
-	count  atomic.Uint64 // approx number of events
-	bytes  atomic.Uint64 // approx total size
+	count   atomic.Uint64 // approx number of events
+	bytes   atomic.Uint64 // approx total size
 }
 
 func (b *block) reset() {
@@ -60,7 +60,7 @@ func initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string) (_ *we
 		HTTPHeader: rpc.GetHeader(
 			rpc.WithoutToken(),
 			rpc.WithTag("subtrace_tunnel_id", tunnelID.String()),
-			rpc.WithTag("subtrace_tunnel_side", "sink"),
+			rpc.WithTag("subtrace_tunnel_side", "source"),
 		),
 	})
 	if err != nil {
