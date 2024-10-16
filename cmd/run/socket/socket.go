@@ -947,7 +947,7 @@ func newTempBindSocket(domain int) (*fd.FD, error) {
 	return fd, nil
 }
 
-func pickLoopbackAddr(domain int) ([]byte, error) {
+func getEphemeralLoopbackAddr(domain int) ([]byte, error) {
 	arr, err := net.Interfaces()
 	if err != nil {
 		return nil, fmt.Errorf("list interfaces: %w", err)
@@ -962,22 +962,17 @@ func pickLoopbackAddr(domain int) ([]byte, error) {
 		}
 
 		for _, addr := range addrs {
+			// slog.Debug("found address on network interface", "iface", iface.Name, slog.Group("addr", "type", fmt.Sprintf("%T", addr), "val", addr))
 			switch addr := addr.(type) {
 			case *net.IPNet:
-				if addr.IP.IsLoopback() {
-					switch domain {
-					case unix.AF_INET:
-						if len(addr.IP) == net.IPv4len {
-							return addr.IP, nil
-						}
-						if addr.IP.To4() != nil {
-							return addr.IP.To4(), nil
-						}
-					case unix.AF_INET6:
-						if addr.IP.IsLoopback() {
-							return addr.IP, nil
-						}
-					}
+				if !addr.IP.IsLoopback() {
+					continue
+				}
+				if domain == unix.AF_INET && addr.IP.To4() != nil {
+					return addr.IP.To4(), nil
+				}
+				if domain == unix.AF_INET6 && addr.IP.To4() == nil {
+					return addr.IP.To16(), nil
 				}
 			}
 		}
@@ -1001,24 +996,26 @@ func bindEphemeral(domain int, fd *fd.FD, loopback bool) (netip.AddrPort, error)
 	case unix.AF_INET:
 		sa = &unix.SockaddrInet4{}
 		if loopback {
-			if pick, err := pickLoopbackAddr(domain); err == nil {
-				addr = pick[:copy(sa.(*unix.SockaddrInet4).Addr[:], pick)]
+			if val, err := getEphemeralLoopbackAddr(domain); err == nil {
+				copy(sa.(*unix.SockaddrInet4).Addr[:], val)
+				addr = sa.(*unix.SockaddrInet4).Addr[:]
 			}
 		}
-
 	case unix.AF_INET6:
 		sa = &unix.SockaddrInet6{}
 		if loopback {
-			if found, err := pickLoopbackAddr(domain); err == nil {
-				addr = found[:copy(sa.(*unix.SockaddrInet6).Addr[:], found)]
+			if val, err := getEphemeralLoopbackAddr(domain); err == nil {
+				copy(sa.(*unix.SockaddrInet6).Addr[:], val)
+				addr = sa.(*unix.SockaddrInet6).Addr[:]
 			}
 		}
+	default:
+		panic(fmt.Sprintf("unknown domain %d", domain))
 	}
 
-	if len(addr) > 0 {
-		slog.Debug("bind ephemeral socket to loopback", "fd", fd.String(), "loopback", loopback, "sockaddr", fmt.Sprintf("%T", sa), "addr", net.IP(addr))
+	if loopback || len(addr) > 0 {
+		slog.Debug("binding ephemeral socket", "domain", domain, "fd", fd.String(), "loopback", loopback, slog.Group("sockaddr", "type", fmt.Sprintf("%T", sa), "addr", net.IP(addr)))
 	}
-
 	if err := unix.Bind(fd.FD(), sa); err != nil {
 		return netip.AddrPort{}, fmt.Errorf("bind %T: addr %v: %w", sa, net.IP(addr), err)
 	}
@@ -1027,6 +1024,7 @@ func bindEphemeral(domain int, fd *fd.FD, loopback bool) (netip.AddrPort, error)
 	if err != nil {
 		return netip.AddrPort{}, fmt.Errorf("get ephemeral address: %w", err)
 	}
+
 	switch addr := sa.(type) {
 	case *unix.SockaddrInet4:
 		return netip.AddrPortFrom(netip.AddrFrom4(addr.Addr), uint16(addr.Port)), nil
