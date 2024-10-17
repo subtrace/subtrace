@@ -725,16 +725,13 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 	go func() { // dispatch loop
 		for conn := range buffer {
 			go func(p *proxy) {
-				process, err := net.DialTCP("tcp", nil, &net.TCPAddr{
-					IP:   ephemeral.Addr().AsSlice(),
-					Port: int(ephemeral.Port()),
-				})
+				process, err := net.Dial("tcp", ephemeral.String())
 				if err != nil {
 					p.external.Close()
 					slog.Debug("failed to dial ephemeral address", "err", err) // not fatal: the process probably exited
 					return
 				}
-				p.process = process
+				p.process = process.(*net.TCPConn)
 
 				ch := make(chan *proxy, 1)
 				addr := netip.MustParseAddrPort(process.LocalAddr().String())
