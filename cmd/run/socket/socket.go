@@ -733,8 +733,12 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 				}
 				p.process = process.(*net.TCPConn)
 
-				ch := make(chan *proxy, 1)
 				addr := netip.MustParseAddrPort(process.LocalAddr().String())
+				if addr.Addr().Is4In6() {
+					addr = netip.AddrPortFrom(netip.AddrFrom4(addr.Addr().As4()), addr.Port())
+				}
+
+				ch := make(chan *proxy, 1)
 				if found, loaded := next.listening.backlog.LoadOrStore(addr, ch); loaded {
 					ch = found.(chan *proxy)
 					next.listening.backlog.Delete(addr)
@@ -783,6 +787,9 @@ func (s *Socket) Accept(flags int) (*Socket, syscall.Errno, error) {
 		addr = netip.AddrPortFrom(netip.AddrFrom4(sa.Addr), uint16(sa.Port))
 	case *unix.SockaddrInet6:
 		addr = netip.AddrPortFrom(netip.AddrFrom16(sa.Addr), uint16(sa.Port))
+	}
+	if addr.Addr().Is4In6() {
+		addr = netip.AddrPortFrom(netip.AddrFrom4(addr.Addr().As4()), addr.Port())
 	}
 
 	ch := make(chan *proxy, 1)
