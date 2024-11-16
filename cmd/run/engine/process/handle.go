@@ -112,7 +112,7 @@ func (p *Process) handleOpen(n *seccomp.Notif, dirfd int, pathAddr uintptr, flag
 	if errno != 0 {
 		return n.Return(0, errno)
 	}
-	if !tls.IsKnownPath(path) {
+	if !tls.Enabled || !tls.IsKnownPath(path) {
 		return n.Skip()
 	}
 
@@ -161,7 +161,7 @@ func (p *Process) handleFstatat(n *seccomp.Notif, dirfd int, pathAddr uintptr, b
 	if errno != 0 {
 		return n.Return(0, errno)
 	}
-	if !tls.IsKnownPath(path) {
+	if !tls.Enabled || !tls.IsKnownPath(path) {
 		return n.Skip()
 	}
 
@@ -205,7 +205,7 @@ func (p *Process) handleStatx(n *seccomp.Notif, dirfd int, pathAddr uintptr, fla
 	if errno != 0 {
 		return n.Return(0, errno)
 	}
-	if !tls.IsKnownPath(path) {
+	if !tls.Enabled || !tls.IsKnownPath(path) {
 		return n.Skip()
 	}
 

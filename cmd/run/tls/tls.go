@@ -19,6 +19,8 @@ import (
 	"time"
 )
 
+var Enabled bool
+
 var (
 	generatedCert *x509.Certificate
 	generatedKey  *ecdsa.PrivateKey

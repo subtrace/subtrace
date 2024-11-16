@@ -57,6 +57,7 @@ func NewCommand() *ffcli.Command {
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.flags.log = c.FlagSet.String("log", "", "if true, log trace events to stderr")
+	c.FlagSet.BoolVar(&tls.Enabled, "tls", true, "intercept outgoing TLS requests")
 	c.FlagSet.StringVar(&c.flags.pprof, "pprof", "", "write pprof CPU profile to file")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose debug logging")
 	c.UsageFunc = func(fc *ffcli.Command) string {
@@ -301,8 +302,10 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 
 	go c.watchSignals()
 
-	if err := tls.GenerateEphemeralCA(); err != nil {
-		return 0, fmt.Errorf("create ephemeral TLS CA: %w", err)
+	if tls.Enabled {
+		if err := tls.GenerateEphemeralCA(); err != nil {
+			return 0, fmt.Errorf("create ephemeral TLS CA: %w", err)
+		}
 	}
 
 	c.initEventBase()
