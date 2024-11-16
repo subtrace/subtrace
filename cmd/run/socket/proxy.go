@@ -181,7 +181,11 @@ func (p *proxy) proxyOptimistic(cli, srv *bufConn) error {
 		}
 		switch proto := guessProtocol(sample); proto {
 		case "tls":
-			errs <- p.proxyTLS(cli, srv)
+			if tls.Enabled {
+				errs <- p.proxyTLS(cli, srv)
+			} else {
+				errs <- p.proxyFallback(cli, srv)
+			}
 		case "http/1":
 			errs <- p.proxyHTTP(cli, srv)
 		case "http/2":
