@@ -218,9 +218,6 @@ func (p *proxy) proxyTLS(cli, srv *bufConn) error {
 		// means: (a) the application is using an unknown CA root store location,
 		// (b) it's using certificate pinning, (c) it's an mTLS connection, or (d)
 		// something else.
-		//
-		// TODO: this might be more common than we think, so we should allow the
-		// user to disable TLS interception with a CLI flag.
 		return fmt.Errorf("proxy tls handshake: %w", err)
 	}
 
