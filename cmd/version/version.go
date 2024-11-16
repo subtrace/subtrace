@@ -60,7 +60,7 @@ func getExecutableHash() string {
 func GetCanonicalString() string {
 	ret := fmt.Sprintf("%s-%s", Release, CommitHash)
 	if Release == "b000" && CommitHash == "unknown" {
-		ret += getExecutableHash()
+		ret += "-" + getExecutableHash()
 	}
 	return ret
 }
