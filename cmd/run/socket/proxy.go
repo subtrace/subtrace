@@ -6,6 +6,8 @@ package socket
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/martian/v3/har"
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/cmd/run/tracer"
@@ -296,11 +299,14 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			ev := event.NewFromTemplate(p.tmpl)
 			eventID := ev.Get("event_id")
 
+			timings := new(har.Timings)
+
 			if req.Body != nil {
 				ch := ev.NewLazy("http_req_body_size_bytes_wire")
 				go func() {
 					n, _ := io.Copy(io.Discard, req.Body)
 					req.Body.Close()
+					timings.Send = time.Since(begin).Milliseconds()
 					ch <- fmt.Sprintf("%d", n)
 				}()
 			}
@@ -345,6 +351,8 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				ev.Set("http_req_x_forwarded_for", val)
 			}
 
+			startWait := time.Now()
+
 			resp, err := http.ReadResponse(bsr, req)
 			switch {
 			case err == nil:
@@ -355,6 +363,8 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				errs <- fmt.Errorf("tracer: read response: %w", err)
 				return
 			}
+
+			timings.Wait = time.Since(startWait).Milliseconds()
 
 			ev.Set("http_resp_status_code", fmt.Sprintf("%d", resp.StatusCode))
 			if len(resp.TransferEncoding) > 0 {
@@ -375,12 +385,15 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				go func() {
 					n, _ := io.Copy(io.Discard, resp.Body)
 					resp.Body.Close()
+					timings.Receive = time.Since(begin).Milliseconds()
 					ch <- fmt.Sprintf("%d", n)
 				}()
 			}
 
 			ev.WaitLazy()
-			ev.Set("http_duration", fmt.Sprintf("%d", time.Since(begin).Nanoseconds()))
+
+			duration := time.Since(begin)
+			ev.Set("http_duration", fmt.Sprintf("%d", duration.Nanoseconds()))
 
 			ev.WaitLazy()
 			tags := ev.String()
@@ -393,6 +406,44 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			if val := resp.Header.Get("x-subtrace-tags"); val != "" {
 				tags += " " + val
 			}
+
+			switch strings.ToLower(os.Getenv("SUBTRACE_HAR")) {
+			case "true", "t":
+				hreq, err := har.NewRequest(req, false)
+				if err != nil {
+					slog.Debug("failed to parse as HTTP request as HAR request", "eventID", eventID, "err", err)
+					break
+				}
+
+				hresp, err := har.NewResponse(resp, false)
+				if err != nil {
+					slog.Debug("failed to parse as HTTP response as HAR response", "eventID", eventID, "err", err)
+					break
+				}
+
+				entry := &har.Entry{
+					ID:              eventID,
+					StartedDateTime: begin.UTC(),
+					Time:            duration.Milliseconds(),
+					Request:         hreq,
+					Response:        hresp,
+					Timings:         timings,
+				}
+
+				b := new(bytes.Buffer)
+				w := base64.NewEncoder(base64.RawStdEncoding, b)
+				if err := json.NewEncoder(w).Encode(entry); err != nil {
+					slog.Debug("failed to encode HAR JSON", "eventID", eventID, "err", err)
+					break
+				}
+				if err := w.Close(); err != nil {
+					slog.Debug("failed to close HAR base64 encoder", "eventID", eventID, "err", err)
+					break
+				}
+
+				tags += " http_har_entry=" + b.String()
+			}
+
 			tracer.DefaultManager.Insert(tags)
 
 			if resp.StatusCode == http.StatusSwitchingProtocols {
