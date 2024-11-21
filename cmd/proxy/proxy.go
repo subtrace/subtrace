@@ -187,8 +187,9 @@ func (c *Command) ModifyRequest(req *http.Request) error {
 
 func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 	begin := time.Now().UTC()
+
 	timings := new(har.Timings)
-	timings.Send = time.Now().UnixNano()
+	timings.Send = time.Since(begin).Milliseconds()
 
 	req.RequestURI = ""
 	resp, err := http.DefaultClient.Do(req)
@@ -197,8 +198,8 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	duration := time.Since(begin)
-	timings.Wait = time.Now().UnixNano()
-	timings.Receive = time.Now().UnixNano()
+	timings.Wait = time.Since(begin).Milliseconds()
+	timings.Receive = time.Since(begin).Milliseconds()
 
 	ev := event.NewFromTemplate(event.Base)
 	eventID := ev.Get("event_id")
