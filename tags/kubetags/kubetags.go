@@ -6,8 +6,8 @@ package kubetags
 import (
 	"os"
 
-	"subtrace.dev/cmd/run/internal/tags/gcptags"
 	"subtrace.dev/event"
+	"subtrace.dev/tags/gcptags"
 )
 
 func FetchLocal() (*event.Event, bool) {

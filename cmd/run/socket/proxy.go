@@ -24,8 +24,8 @@ import (
 	"github.com/google/martian/v3/har"
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/tls"
-	"subtrace.dev/cmd/run/tracer"
 	"subtrace.dev/event"
+	"subtrace.dev/tracer"
 )
 
 type proxy struct {

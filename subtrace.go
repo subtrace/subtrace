@@ -13,9 +13,10 @@ import (
 	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
+	"subtrace.dev/cmd/proxy"
 	"subtrace.dev/cmd/run"
-	"subtrace.dev/cmd/worker"
 	"subtrace.dev/cmd/version"
+	"subtrace.dev/cmd/worker"
 )
 
 func main() {
@@ -27,6 +28,7 @@ func main() {
 	c.ShortUsage = "subtrace <command>"
 
 	c.Subcommands = append(c.Subcommands, run.NewCommand())
+	c.Subcommands = append(c.Subcommands, proxy.NewCommand())
 	c.Subcommands = append(c.Subcommands, worker.NewCommand())
 	c.Subcommands = append(c.Subcommands, version.NewCommand())
 

@@ -28,15 +28,15 @@ import (
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/futex"
-	"subtrace.dev/cmd/run/internal/tags/cloudtags"
-	"subtrace.dev/cmd/run/internal/tags/gcptags"
-	"subtrace.dev/cmd/run/internal/tags/kubetags"
 	"subtrace.dev/cmd/run/kernel"
 	"subtrace.dev/cmd/run/tls"
-	"subtrace.dev/cmd/run/tracer"
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/event"
 	"subtrace.dev/logging"
+	"subtrace.dev/tags/cloudtags"
+	"subtrace.dev/tags/gcptags"
+	"subtrace.dev/tags/kubetags"
+	"subtrace.dev/tracer"
 )
 
 type Command struct {
