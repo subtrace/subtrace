@@ -12,13 +12,17 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sync"
 	"time"
 
+	"github.com/dop251/goja"
 	"github.com/google/martian/v3"
 	"github.com/google/martian/v3/har"
 	"github.com/peterbourgon/ff/v3"
@@ -34,10 +38,14 @@ import (
 
 type Command struct {
 	flags struct {
-		from string
-		to   string
-		log  *bool
+		config string
+		from   string
+		to     string
+		log    *bool
 	}
+
+	runtime *goja.Runtime
+	rules   []rule
 
 	ffcli.Command
 }
@@ -50,6 +58,7 @@ func NewCommand() *ffcli.Command {
 	c.ShortHelp = "start a worker node"
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
+	c.FlagSet.StringVar(&c.flags.config, "config", "", "configuration file path")
 	c.FlagSet.StringVar(&c.flags.from, "from", "", "local address to listen on")
 	c.FlagSet.StringVar(&c.flags.to, "to", "", "remote address to forward requests to")
 	c.flags.log = c.FlagSet.Bool("log", false, "if true, log trace events to stderr")
@@ -100,6 +109,21 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 
 	tracer.DefaultManager.SetLog(*c.flags.log)
 
+	if c.flags.config != "" {
+		b, err := os.ReadFile(c.flags.config)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "read config file: %v", err)
+			os.Exit(1)
+			return nil
+		}
+
+		if err := c.parseConfig(string(b)); err != nil {
+			fmt.Fprintf(os.Stderr, "parse config: %v", err)
+			os.Exit(1)
+			return nil
+		}
+	}
+
 	c.initEventBase()
 
 	go tracer.DefaultManager.StartBackgroundFlush(ctx)
@@ -119,6 +143,93 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		os.Exit(1)
 		return nil
 	}
+}
+
+func newStringMatcher(val goja.Value) (func(string) bool, error) {
+	switch val := val.(type) {
+	case goja.String:
+		return func(x string) bool {
+			ok, err := filepath.Match(val.String(), x)
+			return err == nil && ok
+		}, nil
+	case *goja.Object:
+		switch val.ClassName() {
+		case "RegExp":
+			re, err := regexp.Compile(val.Get("source").String())
+			if err != nil {
+				return nil, fmt.Errorf("compile regexp: %w", err)
+			}
+			return re.MatchString, nil
+		}
+	}
+	return nil, fmt.Errorf("unknown type %T", val)
+}
+
+func (c *Command) parseConfig(config string) error {
+	c.runtime = goja.New()
+
+	var nextID int
+	var mu sync.Mutex
+	c.runtime.Set("trace", func(method goja.Value, path goja.Value, spec any) {
+		id := nextID
+		nextID++
+
+		start := time.Now()
+		defer func() {
+			slog.Debug("parsing new trace config definition", "id", id, "method", method, "path", path, "spec", fmt.Sprintf("%p", spec), "rules", len(c.rules), "took", time.Since(start))
+		}()
+
+		// fmt.Printf("method(%T)=%+v  |  path(%T)=%+v\n", method, method, path, path)
+		isMethodMatch, err := newStringMatcher(method)
+		if err != nil {
+			slog.Error("failed to build method matcher", "id", id, "err", err)
+			return
+		}
+		isPathMatch, err := newStringMatcher(path)
+		if err != nil {
+			slog.Error("failed to build path matcher", "id", id, "err", err)
+			return
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		if fn, ok := spec.(func(goja.FunctionCall) goja.Value); ok {
+			c.rules = append(c.rules, rule{
+				match: func(req *http.Request, resp *http.Response) bool {
+					return isMethodMatch(req.Method) && isPathMatch(req.URL.Path)
+				},
+
+				apply: func(req *http.Request, resp *http.Response) *action {
+					ret := fn(goja.FunctionCall{})
+					val := ret.Export()
+					// fmt.Printf("applied %d: returned (%T=%T): %+v = %+v\n", id, ret, val, ret, val)
+
+					switch val := val.(type) {
+					case bool:
+						return &action{skip: !val}
+					case map[string]any:
+						if x, ok := val["sample"]; ok {
+							if p, ok := x.(float64); ok {
+								if rand.Float64() >= p {
+									return &action{skip: true}
+								}
+							}
+						}
+					}
+					return &action{}
+				},
+			})
+		}
+	})
+
+	start := time.Now()
+	slog.Debug("running config builder script")
+	if _, err := c.runtime.RunString(config); err != nil {
+		panic(err)
+	}
+
+	slog.Info("finished parsing config script", "rules", len(c.rules), "took", time.Since(start).Round(time.Microsecond))
+	return nil
 }
 
 func (c *Command) initEventBase() {
@@ -188,6 +299,9 @@ func (c *Command) ModifyRequest(req *http.Request) error {
 func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 	begin := time.Now().UTC()
 
+	ev := event.NewFromTemplate(event.Base)
+	eventID := ev.Get("event_id")
+
 	timings := new(har.Timings)
 	timings.Send = time.Since(begin).Milliseconds()
 
@@ -197,12 +311,24 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
-	duration := time.Since(begin)
+	httpDuration := time.Since(begin)
 	timings.Wait = time.Since(begin).Milliseconds()
 	timings.Receive = time.Since(begin).Milliseconds()
 
-	ev := event.NewFromTemplate(event.Base)
-	eventID := ev.Get("event_id")
+	action := new(action)
+	for _, rule := range c.rules {
+		if action.skip {
+			break
+		}
+		if rule.match(req, resp) {
+			action = action.merge(rule.apply(req, resp))
+		}
+	}
+
+	slog.Debug("applied rules", "eventID", eventID, "took", (time.Since(begin) - httpDuration).Round(time.Microsecond))
+	if action.skip {
+		return resp, nil
+	}
 
 	switch true {
 	case true:
@@ -221,7 +347,7 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 		entry := &har.Entry{
 			ID:              eventID,
 			StartedDateTime: begin.UTC(),
-			Time:            duration.Milliseconds(),
+			Time:            httpDuration.Milliseconds(),
 			Request:         hreq,
 			Response:        hresp,
 			Timings:         timings,
@@ -237,10 +363,28 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 			slog.Debug("failed to close HAR base64 encoder", "eventID", eventID, "err", err)
 			break
 		}
-
 		ev.Set("http_har_entry", b.String())
 	}
 
 	tracer.DefaultManager.Insert(ev.String())
 	return resp, nil
+}
+
+type rule struct {
+	match func(*http.Request, *http.Response) bool
+	apply func(*http.Request, *http.Response) *action
+}
+
+type action struct {
+	skip              bool
+	requestModifiers  []martian.RequestModifier
+	responseModifiers []martian.ResponseModifier
+}
+
+func (this *action) merge(other *action) *action {
+	return &action{
+		skip:              this.skip || other.skip,
+		requestModifiers:  append(this.requestModifiers, other.requestModifiers...),
+		responseModifiers: append(this.responseModifiers, other.responseModifiers...),
+	}
 }
