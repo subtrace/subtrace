@@ -94,7 +94,7 @@ func GetEphemeralCAPEM() []byte {
 // ref: https://serverfault.com/a/722646
 var knownPEM = []string{
 	"/etc/ssl/certs/ca-certificates.crt",                // Debian, Ubuntu, Gentoo
-	"/usr/lib/ssl/cert.pem",                             // Debian, Ubunut, Gentoo (symlink to /etc/ssl/certs/ca-certificates.crt)
+	"/usr/lib/ssl/cert.pem",                             // Debian, Ubuntu, Gentoo (symlink to /etc/ssl/certs/ca-certificates.crt)
 	"/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora, RHEL 6
 	"/etc/ssl/ca-bundle.pem",                            // OpenSUSE
 	"/etc/pki/tls/cacert.pem",                           // OpenELEC
