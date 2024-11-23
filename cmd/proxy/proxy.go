@@ -332,13 +332,13 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	switch true {
 	case true:
-		hreq, err := har.NewRequest(req, false)
+		hreq, err := har.NewRequest(req, true)
 		if err != nil {
 			slog.Debug("failed to parse as HTTP request as HAR request", "eventID", eventID, "err", err)
 			break
 		}
 
-		hresp, err := har.NewResponse(resp, false)
+		hresp, err := har.NewResponse(resp, true)
 		if err != nil {
 			slog.Debug("failed to parse as HTTP response as HAR response", "eventID", eventID, "err", err)
 			break
