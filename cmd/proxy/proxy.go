@@ -342,14 +342,20 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 	case true:
 		hreq, err := har.NewRequest(req, true)
 		if err != nil {
-			slog.Debug("failed to parse as HTTP request as HAR request", "eventID", eventID, "err", err)
-			break
+			if hreq, err = har.NewRequest(req, false); err != nil {
+				slog.Debug("failed to parse as HTTP request as HAR request", "eventID", eventID, "err", err)
+				break
+			} else {
+				// TODO: tell the user that parsing the body failed for whatever reason
+			}
 		}
 
 		hresp, err := har.NewResponse(resp, true)
 		if err != nil {
-			slog.Debug("failed to parse as HTTP response as HAR response", "eventID", eventID, "err", err)
-			break
+			if hresp, err = har.NewResponse(resp, false); err != nil {
+				slog.Debug("failed to parse as HTTP response as HAR response", "eventID", eventID, "err", err)
+				break
+			}
 		}
 
 		entry := &har.Entry{
