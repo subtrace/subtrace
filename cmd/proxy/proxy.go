@@ -305,8 +305,16 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 	timings := new(har.Timings)
 	timings.Send = time.Since(begin).Milliseconds()
 
-	req.RequestURI = ""
-	resp, err := http.DefaultClient.Do(req)
+	tr := &http.Transport{
+		Dial: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	}
+
+	resp, err := tr.RoundTrip(req)
 	if err != nil {
 		return resp, err
 	}
