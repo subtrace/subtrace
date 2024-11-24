@@ -408,7 +408,8 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			}
 
 			switch strings.ToLower(os.Getenv("SUBTRACE_HAR")) {
-			case "1", "yes", "y", "true", "t":
+			case "0", "no", "n", "false", "f":
+			case "", "1", "yes", "y", "true", "t":
 				hreq, err := har.NewRequest(req, false)
 				if err != nil {
 					slog.Debug("failed to parse as HTTP request as HAR request", "eventID", eventID, "err", err)
