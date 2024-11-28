@@ -39,8 +39,8 @@ import (
 type Command struct {
 	flags struct {
 		config string
-		from   string
-		to     string
+		listen string
+		remote string
 		log    *bool
 	}
 
@@ -59,8 +59,8 @@ func NewCommand() *ffcli.Command {
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.FlagSet.StringVar(&c.flags.config, "config", "", "configuration file path")
-	c.FlagSet.StringVar(&c.flags.from, "from", "", "local address to listen on")
-	c.FlagSet.StringVar(&c.flags.to, "to", "", "remote address to forward requests to")
+	c.FlagSet.StringVar(&c.flags.listen, "listen", "", "local IP:PORT to listen on")
+	c.FlagSet.StringVar(&c.flags.remote, "remote", "", "remote address to forward requests to")
 	c.flags.log = c.FlagSet.Bool("log", false, "if true, log trace events to stderr")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
 
@@ -73,24 +73,24 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	logging.Init()
 	slog.Debug("starting subtrace proxy", "release", version.Release, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
 
-	if c.flags.from == "" && c.flags.to == "" {
-		fmt.Fprintf(os.Stderr, "error: missing -from=ADDR and -to=ADDR\n")
+	if c.flags.listen == "" && c.flags.remote == "" {
+		fmt.Fprintf(os.Stderr, "error: missing -listen and -remote\n")
 		return flag.ErrHelp
-	} else if c.flags.from == "" {
-		fmt.Fprintf(os.Stderr, "error: missing -from=ADDR\n")
+	} else if c.flags.listen == "" {
+		fmt.Fprintf(os.Stderr, "error: missing -listen\n")
 		return flag.ErrHelp
-	} else if c.flags.to == "" {
-		fmt.Fprintf(os.Stderr, "error: missing -to=ADDR\n")
-		return flag.ErrHelp
-	}
-
-	if _, err := netip.ParseAddrPort(c.flags.from); err != nil {
-		fmt.Fprintf(os.Stderr, "error: failed to parse -from address: %v\n", err)
+	} else if c.flags.remote == "" {
+		fmt.Fprintf(os.Stderr, "error: missing -remote\n")
 		return flag.ErrHelp
 	}
 
-	if _, err := netip.ParseAddrPort(c.flags.to); err != nil {
-		fmt.Fprintf(os.Stderr, "error: failed to parse -to address: %v\n", err)
+	if _, err := netip.ParseAddrPort(c.flags.listen); err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to parse -listen address: %v\n", err)
+		return flag.ErrHelp
+	}
+
+	if _, err := netip.ParseAddrPort(c.flags.remote); err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to parse -remote address: %v\n", err)
 		return flag.ErrHelp
 	}
 
@@ -272,7 +272,7 @@ func (c *Command) initEventBase() {
 }
 
 func (c *Command) start(ctx context.Context) error {
-	lis, err := net.Listen("tcp", c.flags.from)
+	lis, err := net.Listen("tcp", c.flags.listen)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -284,7 +284,7 @@ func (c *Command) start(ctx context.Context) error {
 		return new(net.Dialer).DialContext(ctx, network, addr)
 	})
 
-	slog.Info("listening for new connections", "addr", c.flags.from)
+	slog.Info("listening for new connections", "addr", c.flags.listen)
 	if err := p.Serve(lis); err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}
@@ -292,7 +292,7 @@ func (c *Command) start(ctx context.Context) error {
 }
 
 func (c *Command) ModifyRequest(req *http.Request) error {
-	req.URL.Host = c.flags.to
+	req.URL.Host = c.flags.remote
 	return nil
 }
 
