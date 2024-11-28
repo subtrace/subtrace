@@ -15,7 +15,6 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -55,11 +54,11 @@ func NewCommand() *ffcli.Command {
 
 	c.Name = "proxy"
 	c.ShortUsage = "subtrace proxy [flags]"
-	c.ShortHelp = "start a worker node"
+	c.ShortHelp = "start a reverse proxy"
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.FlagSet.StringVar(&c.flags.config, "config", "", "configuration file path")
-	c.FlagSet.StringVar(&c.flags.listen, "listen", "", "local IP:PORT to listen on")
+	c.FlagSet.StringVar(&c.flags.listen, "listen", "", "local address to listen on")
 	c.FlagSet.StringVar(&c.flags.remote, "remote", "", "remote address to forward requests to")
 	c.flags.log = c.FlagSet.Bool("log", false, "if true, log trace events to stderr")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
@@ -84,16 +83,6 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		return flag.ErrHelp
 	}
 
-	if _, err := netip.ParseAddrPort(c.flags.listen); err != nil {
-		fmt.Fprintf(os.Stderr, "error: failed to parse -listen address: %v\n", err)
-		return flag.ErrHelp
-	}
-
-	if _, err := netip.ParseAddrPort(c.flags.remote); err != nil {
-		fmt.Fprintf(os.Stderr, "error: failed to parse -remote address: %v\n", err)
-		return flag.ErrHelp
-	}
-
 	if c.flags.log == nil {
 		c.flags.log = new(bool)
 		if os.Getenv("SUBTRACE_TOKEN") == "" {
@@ -108,6 +97,13 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	}
 
 	tracer.DefaultManager.SetLog(*c.flags.log)
+
+	go tracer.DefaultManager.StartBackgroundFlush(ctx)
+	defer func() {
+		if err := tracer.DefaultManager.Flush(); err != nil {
+			slog.Error("failed to flush tracer event manager", "err", err)
+		}
+	}()
 
 	if c.flags.config != "" {
 		b, err := os.ReadFile(c.flags.config)
@@ -125,13 +121,6 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	}
 
 	c.initEventBase()
-
-	go tracer.DefaultManager.StartBackgroundFlush(ctx)
-	defer func() {
-		if err := tracer.DefaultManager.Flush(); err != nil {
-			slog.Error("failed to flush tracer event manager", "err", err)
-		}
-	}()
 
 	switch err := c.start(ctx); {
 	case err == nil:
