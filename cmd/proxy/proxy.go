@@ -23,12 +23,12 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/google/martian/v3"
-	"github.com/google/martian/v3/har"
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/event"
 	"subtrace.dev/logging"
+	"subtrace.dev/parse"
 	"subtrace.dev/tags/cloudtags"
 	"subtrace.dev/tags/gcptags"
 	"subtrace.dev/tags/kubetags"
@@ -286,13 +286,8 @@ func (c *Command) ModifyRequest(req *http.Request) error {
 }
 
 func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
-	begin := time.Now().UTC()
-
-	ev := event.NewFromTemplate(event.Base)
-	eventID := ev.Get("event_id")
-
-	timings := new(har.Timings)
-	timings.Send = time.Since(begin).Milliseconds()
+	p := parse.New(context.Background())
+	p.UseRequest(req)
 
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
@@ -308,68 +303,48 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
-	httpDuration := time.Since(begin)
-	timings.Wait = time.Since(begin).Milliseconds()
-	timings.Receive = time.Since(begin).Milliseconds()
-
-	action := new(action)
-	for _, rule := range c.rules {
-		if action.skip {
-			break
+	if len(c.rules) > 0 {
+		begin := time.Now()
+		action := new(action)
+		for _, rule := range c.rules {
+			if action.skip {
+				break
+			}
+			if rule.match(req, resp) {
+				action = action.merge(rule.apply(req, resp))
+			}
 		}
-		if rule.match(req, resp) {
-			action = action.merge(rule.apply(req, resp))
+
+		slog.Debug("applied rules", "eventID", p.EventID, "took", time.Since(begin).Round(time.Microsecond))
+		if action.skip {
+			return resp, nil
 		}
 	}
 
-	slog.Debug("applied rules", "eventID", eventID, "took", (time.Since(begin) - httpDuration).Round(time.Microsecond))
-	if action.skip {
+	p.UseResponse(resp)
+
+	entry, err := p.Wait()
+	if err != nil {
+		slog.Error("failed to parse as HAR", "eventID", p.EventID, "err", err)
+	}
+
+	b := new(bytes.Buffer)
+
+	w := base64.NewEncoder(base64.RawStdEncoding, b)
+	if err := json.NewEncoder(w).Encode(entry); err != nil {
+		slog.Debug("failed to encode HAR JSON", "eventID", p.EventID, "err", err)
+		return resp, nil
+	}
+	if err := w.Close(); err != nil {
+		slog.Debug("failed to close HAR base64 encoder", "eventID", p.EventID, "err", err)
 		return resp, nil
 	}
 
-	switch true {
-	case true:
-		hreq, err := har.NewRequest(req, true)
-		if err != nil {
-			if hreq, err = har.NewRequest(req, false); err != nil {
-				slog.Debug("failed to parse as HTTP request as HAR request", "eventID", eventID, "err", err)
-				break
-			} else {
-				// TODO: tell the user that parsing the body failed for whatever reason
-			}
-		}
-
-		hresp, err := har.NewResponse(resp, true)
-		if err != nil {
-			if hresp, err = har.NewResponse(resp, false); err != nil {
-				slog.Debug("failed to parse as HTTP response as HAR response", "eventID", eventID, "err", err)
-				break
-			}
-		}
-
-		entry := &har.Entry{
-			ID:              eventID,
-			StartedDateTime: begin.UTC(),
-			Time:            httpDuration.Milliseconds(),
-			Request:         hreq,
-			Response:        hresp,
-			Timings:         timings,
-		}
-
-		b := new(bytes.Buffer)
-		w := base64.NewEncoder(base64.RawStdEncoding, b)
-		if err := json.NewEncoder(w).Encode(entry); err != nil {
-			slog.Debug("failed to encode HAR JSON", "eventID", eventID, "err", err)
-			break
-		}
-		if err := w.Close(); err != nil {
-			slog.Debug("failed to close HAR base64 encoder", "eventID", eventID, "err", err)
-			break
-		}
-		ev.Set("http_har_entry", b.String())
-	}
-
+	ev := event.NewFromTemplate(event.Base)
+	ev.Set("event_id", p.EventID.String())
+	ev.Set("http_har_entry", b.String())
 	tracer.DefaultManager.Insert(ev.String())
+
 	return resp, nil
 }
 
