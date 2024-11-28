@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -69,13 +70,20 @@ func (p *Parser) start() {
 	<-p.signal
 	<-p.signal
 
-	hreq, err := har.NewRequest(p.request.Load(), true)
+	req, err := har.NewRequest(p.request.Load(), true)
 	if err != nil {
-		if hreq, err = har.NewRequest(p.request.Load(), false); err != nil {
+		if req, err = har.NewRequest(p.request.Load(), false); err != nil {
 			p.setError(fmt.Errorf("parse request: %w", err))
 			return
 		} else {
 			// TODO: tell the user that parsing the body failed for whatever reason
+		}
+	}
+
+	for i := range req.Headers {
+		switch strings.ToLower(req.Headers[i].Name) {
+		case "authorization", "cookie":
+			req.Headers[i].Value = "<redacted>"
 		}
 	}
 
@@ -87,7 +95,14 @@ func (p *Parser) start() {
 		}
 	}
 
-	p.entry.Request = hreq
+	for i := range hresp.Headers {
+		switch strings.ToLower(hresp.Headers[i].Name) {
+		case "set-cookie":
+			hresp.Headers[i].Value = "<redacted>"
+		}
+	}
+
+	p.entry.Request = req
 	p.entry.Response = hresp
 	p.entry.Time = time.Since(p.entry.StartedDateTime).Milliseconds()
 	p.entry.Timings.Receive = time.Since(p.entry.StartedDateTime).Milliseconds()
