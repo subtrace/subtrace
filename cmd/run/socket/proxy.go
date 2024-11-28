@@ -6,6 +6,7 @@ package socket
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -21,10 +22,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/martian/v3/har"
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/event"
+	"subtrace.dev/parse"
 	"subtrace.dev/tracer"
 )
 
@@ -295,18 +296,21 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
-			begin := time.Now()
-			ev := event.NewFromTemplate(p.tmpl)
-			eventID := ev.Get("event_id")
+			parser := parse.New(context.Background())
+			parser.UseRequest(req)
 
-			timings := new(har.Timings)
+			eventID := parser.EventID.String()
+
+			begin := time.Now()
+
+			ev := event.NewFromTemplate(p.tmpl)
+			ev.Set("event_id", parser.EventID.String())
 
 			if req.Body != nil {
 				ch := ev.NewLazy("http_req_body_size_bytes_wire")
 				go func() {
 					n, _ := io.Copy(io.Discard, req.Body)
 					req.Body.Close()
-					timings.Send = time.Since(begin).Milliseconds()
 					ch <- fmt.Sprintf("%d", n)
 				}()
 			}
@@ -351,8 +355,6 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				ev.Set("http_req_x_forwarded_for", val)
 			}
 
-			startWait := time.Now()
-
 			resp, err := http.ReadResponse(bsr, req)
 			switch {
 			case err == nil:
@@ -364,7 +366,7 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
-			timings.Wait = time.Since(startWait).Milliseconds()
+			parser.UseResponse(resp)
 
 			ev.Set("http_resp_status_code", fmt.Sprintf("%d", resp.StatusCode))
 			if len(resp.TransferEncoding) > 0 {
@@ -385,7 +387,6 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				go func() {
 					n, _ := io.Copy(io.Discard, resp.Body)
 					resp.Body.Close()
-					timings.Receive = time.Since(begin).Milliseconds()
 					ch <- fmt.Sprintf("%d", n)
 				}()
 			}
@@ -410,25 +411,10 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			switch strings.ToLower(os.Getenv("SUBTRACE_HAR")) {
 			case "0", "no", "n", "false", "f":
 			case "", "1", "yes", "y", "true", "t":
-				hreq, err := har.NewRequest(req, false)
+				entry, err := parser.Wait()
 				if err != nil {
-					slog.Debug("failed to parse as HTTP request as HAR request", "eventID", eventID, "err", err)
+					slog.Debug("failed to parse as HAR", "eventID", eventID, "err", err)
 					break
-				}
-
-				hresp, err := har.NewResponse(resp, false)
-				if err != nil {
-					slog.Debug("failed to parse as HTTP response as HAR response", "eventID", eventID, "err", err)
-					break
-				}
-
-				entry := &har.Entry{
-					ID:              eventID,
-					StartedDateTime: begin.UTC(),
-					Time:            duration.Milliseconds(),
-					Request:         hreq,
-					Response:        hresp,
-					Timings:         timings,
 				}
 
 				b := new(bytes.Buffer)
