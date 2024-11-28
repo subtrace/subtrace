@@ -41,7 +41,7 @@ import (
 
 type Command struct {
 	flags struct {
-		log   *string
+		log   *bool
 		pprof string
 	}
 
@@ -56,7 +56,7 @@ func NewCommand() *ffcli.Command {
 	c.ShortHelp = "run a command with subtrace"
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
-	c.flags.log = c.FlagSet.String("log", "", "if true, log trace events to stderr")
+	c.flags.log = c.FlagSet.Bool("log", false, "log trace events to stderr")
 	c.FlagSet.BoolVar(&tls.Enabled, "tls", true, "intercept outgoing TLS requests")
 	c.FlagSet.StringVar(&c.flags.pprof, "pprof", "", "write pprof CPU profile to file")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose debug logging")
@@ -277,30 +277,28 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		defer pprof.StopCPUProfile()
 	}
 
-	log := ""
-	if c.flags.log != nil {
-		log = strings.ToLower(*c.flags.log)
-	}
-	switch log {
-	case "y", "yes", "t", "true", "1":
-		tracer.DefaultManager.SetLog(true)
-
-	case "n", "no", "f", "false", "0":
-		if val := os.Getenv("SUBTRACE_TOKEN"); val == "" {
-			fmt.Fprintf(os.Stderr, "WARN: subtrace was started with -log=%q but SUBTRACE_TOKEN is empty\n", *c.flags.log)
-		}
-		tracer.DefaultManager.SetLog(false)
-
-	default:
-		if c.flags.log != nil && *c.flags.log != "" {
-			return 0, fmt.Errorf("unknown -log value: %q", *c.flags.log)
-		}
-		if val := os.Getenv("SUBTRACE_TOKEN"); val == "" {
-			tracer.DefaultManager.SetLog(true)
-		}
-	}
-
 	go c.watchSignals()
+
+	if c.flags.log == nil {
+		c.flags.log = new(bool)
+		if os.Getenv("SUBTRACE_TOKEN") == "" {
+			*c.flags.log = true
+		} else {
+			*c.flags.log = false
+		}
+	} else if *c.flags.log == false {
+		if os.Getenv("SUBTRACE_TOKEN") == "" {
+			slog.Warn("subtrace proxy was started with -log=false but SUBTRACE_TOKEN is empty")
+		}
+	}
+
+	tracer.DefaultManager.SetLog(*c.flags.log)
+	go tracer.DefaultManager.StartBackgroundFlush(ctx)
+	defer func() {
+		if err := tracer.DefaultManager.Flush(); err != nil {
+			slog.Error("failed to flush tracer event manager", "err", err)
+		}
+	}()
 
 	if tls.Enabled {
 		if err := tls.GenerateEphemeralCA(); err != nil {
@@ -309,13 +307,6 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	}
 
 	c.initEventBase()
-
-	go tracer.DefaultManager.StartBackgroundFlush(ctx)
-	defer func() {
-		if err := tracer.DefaultManager.Flush(); err != nil {
-			slog.Error("failed to flush tracer event manager", "err", err)
-		}
-	}()
 
 	pid, sec, err := c.forkChild()
 	if errors.Is(err, errMissingSysPtrace) {
