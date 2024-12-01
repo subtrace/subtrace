@@ -416,10 +416,24 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 					break
 				}
 
+				for i := range hreq.Headers {
+					switch strings.ToLower(hreq.Headers[i].Name) {
+					case "authorization", "cookie":
+						hreq.Headers[i].Value = "<redacted>"
+					}
+				}
+
 				hresp, err := har.NewResponse(resp, false)
 				if err != nil {
 					slog.Debug("failed to parse as HTTP response as HAR response", "eventID", eventID, "err", err)
 					break
+				}
+
+				for i := range hresp.Headers {
+					switch strings.ToLower(hresp.Headers[i].Name) {
+					case "set-cookie":
+						hresp.Headers[i].Value = "<redacted>"
+					}
 				}
 
 				entry := &har.Entry{
