@@ -6,22 +6,18 @@ package socket
 import (
 	"bufio"
 	"bytes"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/google/martian/v3/har"
+	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/event"
@@ -284,6 +280,8 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 		defer p.discardMulti(bcr, bsr)
 
 		for {
+			eventID := uuid.New()
+
 			req, err := http.ReadRequest(bcr)
 			switch {
 			case err == nil:
@@ -295,63 +293,10 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
-			begin := time.Now()
-			ev := event.NewFromTemplate(p.tmpl)
-			eventID := ev.Get("event_id")
+			parser := tracer.NewParser(eventID)
 
-			timings := new(har.Timings)
-
-			if req.Body != nil {
-				ch := ev.NewLazy("http_req_body_size_bytes_wire")
-				go func() {
-					n, _ := io.Copy(io.Discard, req.Body)
-					req.Body.Close()
-					timings.Send = time.Since(begin).Milliseconds()
-					ch <- fmt.Sprintf("%d", n)
-				}()
-			}
-
-			if p.tlsServerName != nil {
-				ev.Set("protocol", "https")
-				if *p.tlsServerName != "" {
-					ev.Set("tls_server_name", *p.tlsServerName)
-				}
-			} else {
-				ev.Set("protocol", "http")
-			}
-
-			if p.isOutgoing {
-				ev.Set("http_client_addr", p.process.RemoteAddr().String())
-				ev.Set("http_server_addr", p.external.RemoteAddr().String())
-			} else {
-				ev.Set("http_client_addr", p.external.RemoteAddr().String())
-				ev.Set("http_server_addr", p.process.RemoteAddr().String())
-			}
-
-			ev.Set("http_version", req.Proto)
-			ev.Set("http_is_outgoing", fmt.Sprintf("%v", p.isOutgoing))
-			ev.Set("http_req_method", req.Method)
-			ev.Set("http_req_path", req.URL.Path)
-			if len(req.TransferEncoding) > 0 {
-				ev.Set("http_req_transfer_encoding", strings.Join(req.TransferEncoding, ","))
-			}
-			if val := req.Header.Get("content-type"); val != "" {
-				ev.Set("http_req_content_type", val)
-			}
-			if val := req.Header.Get("content-encoding"); val != "" {
-				ev.Set("http_req_content_encoding", val)
-			}
-			if val := req.Header.Get("content-length"); val != "" {
-				ev.Set("http_req_content_length", val)
-			}
-			if val := req.Header.Get("host"); val != "" {
-				ev.Set("http_req_host", val)
-			}
-			if val := req.Header.Get("x-forwarded-for"); val != "" {
-				ev.Set("http_req_x_forwarded_for", val)
-			}
-
-			startWait := time.Now()
+			parser.UseRequest(req)
+			go io.Copy(io.Discard, req.Body)
 
 			resp, err := http.ReadResponse(bsr, req)
 			switch {
@@ -364,102 +309,12 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
-			timings.Wait = time.Since(startWait).Milliseconds()
+			parser.UseResponse(resp)
+			go io.Copy(io.Discard, resp.Body)
 
-			ev.Set("http_resp_status_code", fmt.Sprintf("%d", resp.StatusCode))
-			if len(resp.TransferEncoding) > 0 {
-				ev.Set("http_resp_transfer_encoding", strings.Join(resp.TransferEncoding, ","))
+			if err := parser.Finish(); err != nil {
+				slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
 			}
-			if val := resp.Header.Get("content-type"); val != "" {
-				ev.Set("http_resp_content_type", val)
-			}
-			if val := resp.Header.Get("content-encoding"); val != "" {
-				ev.Set("http_resp_content_encoding", val)
-			}
-			if val := resp.Header.Get("content-length"); val != "" {
-				ev.Set("http_resp_content_length", val)
-			}
-
-			if resp.Body != nil {
-				ch := ev.NewLazy("http_resp_body_size_bytes_wire")
-				go func() {
-					n, _ := io.Copy(io.Discard, resp.Body)
-					resp.Body.Close()
-					timings.Receive = time.Since(begin).Milliseconds()
-					ch <- fmt.Sprintf("%d", n)
-				}()
-			}
-
-			ev.WaitLazy()
-
-			duration := time.Since(begin)
-			ev.Set("http_duration", fmt.Sprintf("%d", duration.Nanoseconds()))
-
-			ev.WaitLazy()
-			tags := ev.String()
-			if val := os.Getenv("SUBTRACE_TAGS"); val != "" {
-				tags += " " + val
-			}
-			if val := req.Header.Get("x-subtrace-tags"); val != "" {
-				tags += " " + val
-			}
-			if val := resp.Header.Get("x-subtrace-tags"); val != "" {
-				tags += " " + val
-			}
-
-			switch strings.ToLower(os.Getenv("SUBTRACE_HAR")) {
-			case "0", "no", "n", "false", "f":
-			case "", "1", "yes", "y", "true", "t":
-				hreq, err := har.NewRequest(req, false)
-				if err != nil {
-					slog.Debug("failed to parse as HTTP request as HAR request", "eventID", eventID, "err", err)
-					break
-				}
-
-				for i := range hreq.Headers {
-					switch strings.ToLower(hreq.Headers[i].Name) {
-					case "authorization", "cookie":
-						hreq.Headers[i].Value = "<redacted>"
-					}
-				}
-
-				hresp, err := har.NewResponse(resp, false)
-				if err != nil {
-					slog.Debug("failed to parse as HTTP response as HAR response", "eventID", eventID, "err", err)
-					break
-				}
-
-				for i := range hresp.Headers {
-					switch strings.ToLower(hresp.Headers[i].Name) {
-					case "set-cookie":
-						hresp.Headers[i].Value = "<redacted>"
-					}
-				}
-
-				entry := &har.Entry{
-					ID:              eventID,
-					StartedDateTime: begin.UTC(),
-					Time:            duration.Milliseconds(),
-					Request:         hreq,
-					Response:        hresp,
-					Timings:         timings,
-				}
-
-				b := new(bytes.Buffer)
-				w := base64.NewEncoder(base64.RawStdEncoding, b)
-				if err := json.NewEncoder(w).Encode(entry); err != nil {
-					slog.Debug("failed to encode HAR JSON", "eventID", eventID, "err", err)
-					break
-				}
-				if err := w.Close(); err != nil {
-					slog.Debug("failed to close HAR base64 encoder", "eventID", eventID, "err", err)
-					break
-				}
-
-				tags += " " + fmt.Sprintf("http_har_entry=%q", b.String())
-			}
-
-			tracer.DefaultManager.Insert(tags)
 
 			if resp.StatusCode == http.StatusSwitchingProtocols {
 				// We don't support other protocols at the moment (e.g. websocket).

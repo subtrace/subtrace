@@ -4,10 +4,7 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -23,12 +20,12 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/google/martian/v3"
+	"github.com/google/uuid"
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/event"
 	"subtrace.dev/logging"
-	"subtrace.dev/parse"
 	"subtrace.dev/tags/cloudtags"
 	"subtrace.dev/tags/gcptags"
 	"subtrace.dev/tags/kubetags"
@@ -286,19 +283,12 @@ func (c *Command) ModifyRequest(req *http.Request) error {
 }
 
 func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
-	p := parse.New(context.Background())
-	p.UseRequest(req)
+	eventID := uuid.New()
 
-	tr := &http.Transport{
-		Dial: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).Dial,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: time.Second,
-	}
+	parser := tracer.NewParser(eventID)
+	parser.UseRequest(req)
 
-	resp, err := tr.RoundTrip(req)
+	resp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
 		return resp, err
 	}
@@ -315,35 +305,18 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 			}
 		}
 
-		slog.Debug("applied rules", "eventID", p.EventID, "took", time.Since(begin).Round(time.Microsecond))
+		slog.Debug("applied rules", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
 		if action.skip {
 			return resp, nil
 		}
 	}
 
-	p.UseResponse(resp)
-
-	entry, err := p.Wait()
-	if err != nil {
-		slog.Error("failed to parse as HAR", "eventID", p.EventID, "err", err)
-	}
-
-	b := new(bytes.Buffer)
-
-	w := base64.NewEncoder(base64.RawStdEncoding, b)
-	if err := json.NewEncoder(w).Encode(entry); err != nil {
-		slog.Debug("failed to encode HAR JSON", "eventID", p.EventID, "err", err)
-		return resp, nil
-	}
-	if err := w.Close(); err != nil {
-		slog.Debug("failed to close HAR base64 encoder", "eventID", p.EventID, "err", err)
-		return resp, nil
-	}
-
-	ev := event.NewFromTemplate(event.Base)
-	ev.Set("event_id", p.EventID.String())
-	ev.Set("http_har_entry", b.String())
-	tracer.DefaultManager.Insert(ev.String())
+	parser.UseResponse(resp)
+	go func() {
+		if err := parser.Finish(); err != nil {
+			slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
+		}
+	}()
 
 	return resp, nil
 }
