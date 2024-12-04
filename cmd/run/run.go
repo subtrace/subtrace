@@ -293,6 +293,7 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	}
 
 	tracer.DefaultManager.SetLog(*c.flags.log)
+
 	go tracer.DefaultManager.StartBackgroundFlush(ctx)
 	defer func() {
 		if err := tracer.DefaultManager.Flush(); err != nil {
