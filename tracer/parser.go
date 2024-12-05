@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	"github.com/google/martian/v3/har"
 	"github.com/google/uuid"
 	"subtrace.dev/event"
@@ -69,6 +70,16 @@ func (p *Parser) UseRequest(req *http.Request) {
 		}
 		p.timings.Send = time.Since(start).Milliseconds()
 
+		text := sampler.data[:sampler.used]
+		if req.Header.Get("content-encoding") == "br" {
+			if raw, err := io.ReadAll(brotli.NewReader(bytes.NewBuffer(text))); err != nil {
+				p.errs <- fmt.Errorf("decode brotli: %w", err)
+				return
+			} else {
+				text = raw
+			}
+		}
+
 		h.PostData = &har.PostData{
 			MimeType: req.Header.Get("content-type"),
 			Text:     string(sampler.data[:sampler.used]),
@@ -112,10 +123,20 @@ func (p *Parser) UseResponse(resp *http.Response) {
 		}
 		p.timings.Receive = time.Since(start).Milliseconds()
 
+		text := sampler.data[:sampler.used]
+		if resp.Header.Get("content-encoding") == "br" {
+			if raw, err := io.ReadAll(brotli.NewReader(bytes.NewBuffer(text))); err != nil {
+				p.errs <- fmt.Errorf("decode brotli: %w", err)
+				return
+			} else {
+				text = raw
+			}
+		}
+
 		h.Content = &har.Content{
 			Size:     sampler.used,
 			MimeType: resp.Header.Get("content-type"),
-			Text:     sampler.data[:sampler.used],
+			Text:     text,
 			Encoding: "base64",
 		}
 

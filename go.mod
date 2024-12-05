@@ -4,6 +4,7 @@ go 1.22.0
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.23.2
+	github.com/andybalholm/brotli v1.1.0
 	github.com/dop251/goja v0.0.0-20241024094426-79f3a7efcdbd
 	github.com/google/martian/v3 v3.3.3
 	github.com/google/uuid v1.6.0
@@ -16,7 +17,6 @@ require (
 
 require (
 	github.com/ClickHouse/ch-go v0.61.5 // indirect
-	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
