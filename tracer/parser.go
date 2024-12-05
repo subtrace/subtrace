@@ -21,7 +21,7 @@ import (
 	"subtrace.dev/event"
 )
 
-const MaxSampleSize = 2048
+var PayloadLimitBytes int64 = 4096 // bytes
 
 type Parser struct {
 	eventID  uuid.UUID
@@ -169,7 +169,7 @@ func newSampler(orig io.ReadCloser) *sampler {
 	return &sampler{
 		orig: orig,
 		errs: make(chan error, 1),
-		data: make([]byte, MaxSampleSize),
+		data: make([]byte, PayloadLimitBytes),
 	}
 }
 
@@ -191,7 +191,7 @@ func (s *sampler) Read(b []byte) (int, error) {
 	}
 
 	c := int64(n)
-	if remain := MaxSampleSize - s.used; c > remain {
+	if remain := PayloadLimitBytes - s.used; c > remain {
 		c = remain
 	}
 	if c > 0 {

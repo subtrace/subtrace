@@ -57,6 +57,7 @@ func NewCommand() *ffcli.Command {
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.flags.log = c.FlagSet.Bool("log", false, "log trace events to stderr")
+	c.FlagSet.Int64Var(&tracer.PayloadLimitBytes, "payload-limit", 4096, "payload size limit in bytes after which request/response body will be truncated")
 	c.FlagSet.BoolVar(&tls.Enabled, "tls", true, "intercept outgoing TLS requests")
 	c.FlagSet.StringVar(&c.flags.pprof, "pprof", "", "write pprof CPU profile to file")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose debug logging")
