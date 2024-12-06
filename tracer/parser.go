@@ -82,7 +82,7 @@ func (p *Parser) UseRequest(req *http.Request) {
 
 		h.PostData = &har.PostData{
 			MimeType: req.Header.Get("content-type"),
-			Text:     string(sampler.data[:sampler.used]),
+			Text:     string(text),
 		}
 
 		p.request = h
