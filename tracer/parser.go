@@ -5,6 +5,7 @@ package tracer
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -71,7 +72,20 @@ func (p *Parser) UseRequest(req *http.Request) {
 		p.timings.Send = time.Since(start).Milliseconds()
 
 		text := sampler.data[:sampler.used]
-		if req.Header.Get("content-encoding") == "br" {
+		switch req.Header.Get("content-encoding") {
+		case "gzip":
+			gr, err := gzip.NewReader(bytes.NewBuffer(text))
+			if err != nil {
+				p.errs <- fmt.Errorf("create gzip reader: %w", err)
+				return
+			}
+			if raw, err := io.ReadAll(gr); err != nil {
+				p.errs <- fmt.Errorf("read gzip: %w", err)
+				return
+			} else {
+				text = raw
+			}
+		case "br":
 			if raw, err := io.ReadAll(brotli.NewReader(bytes.NewBuffer(text))); err != nil {
 				p.errs <- fmt.Errorf("decode brotli: %w", err)
 				return
@@ -124,7 +138,20 @@ func (p *Parser) UseResponse(resp *http.Response) {
 		p.timings.Receive = time.Since(start).Milliseconds()
 
 		text := sampler.data[:sampler.used]
-		if resp.Header.Get("content-encoding") == "br" {
+		switch resp.Header.Get("content-encoding") {
+		case "gzip":
+			gr, err := gzip.NewReader(bytes.NewBuffer(text))
+			if err != nil {
+				p.errs <- fmt.Errorf("create gzip reader: %w", err)
+				return
+			}
+			if raw, err := io.ReadAll(gr); err != nil {
+				p.errs <- fmt.Errorf("read gzip: %w", err)
+				return
+			} else {
+				text = raw
+			}
+		case "br":
 			if raw, err := io.ReadAll(brotli.NewReader(bytes.NewBuffer(text))); err != nil {
 				p.errs <- fmt.Errorf("decode brotli: %w", err)
 				return
