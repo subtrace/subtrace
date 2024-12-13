@@ -1,6 +1,6 @@
 ### Subtrace
 
-[**Home**](https://subtrace.dev) — [**Docs**](https://docs.subtrace.dev) — [**Discord**](https://discord.gg/GXuwMJXGUk)
+[**Home**](https://subtrace.dev) — [**Docs**](https://docs.subtrace.dev) — [**Discord**](https://subtrace.dev/discord)
 
 **Chrome DevTools for your backend**
 
