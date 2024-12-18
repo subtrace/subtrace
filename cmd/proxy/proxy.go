@@ -89,8 +89,19 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		} else {
 			*c.flags.log = false
 		}
-	} else if *c.flags.log == false {
-		if os.Getenv("SUBTRACE_TOKEN") == "" {
+	} else if *c.flags.log == false && os.Getenv("SUBTRACE_TOKEN") == "" {
+		exists := false
+		for _, arg := range os.Args {
+			if strings.Contains(arg, "-log") {
+				exists = true
+				break
+			}
+			if arg == "--" {
+				break
+			}
+		}
+
+		if exists {
 			slog.Warn("subtrace proxy was started with -log=false but SUBTRACE_TOKEN is empty")
 		}
 	}
