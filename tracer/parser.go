@@ -238,15 +238,13 @@ func (s *sampler) Read(b []byte) (int, error) {
 		s.setError(err)
 	}
 
-	c := int64(n)
-	if remain := PayloadLimitBytes - s.used; c > remain {
-		c = remain
+	if n > 0 && s.used < PayloadLimitBytes {
+		c := int64(n)
+		if s.used+c > PayloadLimitBytes {
+			c = PayloadLimitBytes - s.used
+		}
+		s.used += int64(copy(s.data[s.used:s.used+c], b[0:c]))
 	}
-	if c > 0 {
-		copy(s.data[s.used:s.used+c], b[0:c])
-		s.used += c
-	}
-
 	return n, err
 }
 

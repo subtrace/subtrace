@@ -12,9 +12,11 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -277,8 +279,35 @@ func (c *Command) start(ctx context.Context) error {
 	return nil
 }
 
+func (c *Command) getRemotePrefix() string {
+	if strings.HasPrefix(c.flags.remote, "http://") || strings.HasPrefix(c.flags.remote, "https://") {
+		return c.flags.remote
+	}
+	return "http://" + c.flags.remote
+}
+
+func (c *Command) getRemoteHost() string {
+	u, err := url.Parse(c.getRemotePrefix())
+	if err != nil {
+		return ""
+	}
+	return u.Host
+}
+
 func (c *Command) ModifyRequest(req *http.Request) error {
-	req.URL.Host = c.flags.remote
+	suffix := req.URL.EscapedPath()
+	if !strings.HasPrefix(suffix, "/") {
+		suffix = "/" + suffix
+	}
+
+	u, err := url.Parse(c.getRemotePrefix() + suffix)
+	if err != nil {
+		return fmt.Errorf("parse remote addr: %w", err)
+	}
+
+	req.URL = u
+	req.Host = c.getRemoteHost()
+	req.Header.Del("accept-encoding")
 	return nil
 }
 
@@ -288,7 +317,11 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 	parser := tracer.NewParser(eventID)
 	parser.UseRequest(req)
 
-	resp, err := http.DefaultTransport.RoundTrip(req)
+	tr := &http.Transport{
+		DisableCompression: true,
+	}
+
+	resp, err := tr.RoundTrip(req)
 	if err != nil {
 		return resp, err
 	}
