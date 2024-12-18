@@ -287,9 +287,20 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		} else {
 			*c.flags.log = false
 		}
-	} else if *c.flags.log == false {
-		if os.Getenv("SUBTRACE_TOKEN") == "" {
-			slog.Warn("subtrace proxy was started with -log=false but SUBTRACE_TOKEN is empty")
+	} else if *c.flags.log == false && os.Getenv("SUBTRACE_TOKEN") == "" {
+		exists := false
+		for _, arg := range os.Args {
+			if strings.Contains(arg, "-log") {
+				exists = true
+				break
+			}
+			if arg == "--" {
+				break
+			}
+		}
+
+		if exists {
+			slog.Warn("subtrace was started with -log=false but SUBTRACE_TOKEN is empty")
 		}
 	}
 
