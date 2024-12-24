@@ -116,6 +116,8 @@ func (p *Process) handleOpen(n *seccomp.Notif, dirfd int, pathAddr uintptr, flag
 		return n.Skip()
 	}
 
+	slog.Debug("handling TLS CA cert file open", "path", path)
+
 	ephemeralPEM := tls.GetEphemeralCAPEM()
 
 	orig, err := os.ReadFile(path)
