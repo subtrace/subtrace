@@ -1,4 +1,4 @@
-FROM golang:1.22.0 AS build
+FROM golang:1.23.3 AS build
 WORKDIR /go/src/subtrace
 COPY . .
 RUN --mount=type=cache,target=/go/pkg --mount=type=cache,target=/root/.cache make
