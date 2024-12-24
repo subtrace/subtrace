@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.22.0 AS build
+FROM --platform=$BUILDPLATFORM golang:1.23.3 AS build
 WORKDIR /go/src/subtrace
 COPY . .
 ARG TARGETARCH
