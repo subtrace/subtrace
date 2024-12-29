@@ -21,6 +21,7 @@ import (
 	"github.com/google/martian/v3/har"
 	"github.com/google/uuid"
 	"subtrace.dev/event"
+	"subtrace.dev/web"
 )
 
 var PayloadLimitBytes int64 = 4096 // bytes
@@ -172,7 +173,7 @@ func (p *Parser) UseResponse(resp *http.Response) {
 	}()
 }
 
-func (p *Parser) Finish() error {
+func (p *Parser) Finish(web *web.Server) error {
 	p.wg.Wait()
 	for i := 0; i < 2; i++ {
 		if err := <-p.errs; err != nil {
@@ -181,6 +182,7 @@ func (p *Parser) Finish() error {
 	}
 
 	entry := &har.Entry{
+		ID:              p.eventID.String(),
 		StartedDateTime: p.begin.UTC(),
 		Time:            time.Since(p.begin).Milliseconds(),
 		Request:         p.request,
@@ -190,18 +192,18 @@ func (p *Parser) Finish() error {
 
 	slog.Debug("HAR parser finished parsing request", "eventID", p.eventID, "took", time.Since(p.begin).Microseconds())
 
-	b := new(bytes.Buffer)
-	w := base64.NewEncoder(base64.RawStdEncoding, b)
-	if err := json.NewEncoder(w).Encode(entry); err != nil {
+	b, err := json.Marshal(entry)
+	if err != nil {
 		return fmt.Errorf("encode json: %w", err)
 	}
-	if err := w.Close(); err != nil {
-		return fmt.Errorf("close json: %w", err)
+
+	if web != nil {
+		go web.Send(b)
 	}
 
 	ev := event.NewFromTemplate(event.Base)
 	ev.Set("event_id", p.eventID.String())
-	ev.Set("http_har_entry", b.String())
+	ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(b))
 	DefaultManager.Insert(ev.String())
 	return nil
 }
