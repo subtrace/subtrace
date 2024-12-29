@@ -32,6 +32,7 @@ import (
 	"subtrace.dev/tags/gcptags"
 	"subtrace.dev/tags/kubetags"
 	"subtrace.dev/tracer"
+	"subtrace.dev/web"
 )
 
 type Command struct {
@@ -44,6 +45,7 @@ type Command struct {
 
 	runtime *goja.Runtime
 	rules   []rule
+	web     *web.Server
 
 	ffcli.Command
 }
@@ -129,6 +131,8 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 			return nil
 		}
 	}
+
+	c.web = web.NewServer()
 
 	c.initEventBase()
 
@@ -306,6 +310,16 @@ func (c *Command) getRemoteHost() string {
 }
 
 func (c *Command) ModifyRequest(req *http.Request) error {
+	if req.URL.Path == "/subtrace" {
+		conn, brw, err := martian.NewContext(req).Session().Hijack()
+		if err != nil {
+			return fmt.Errorf("subtrace: failed to hijack devtools endpoint: %w", err)
+		}
+
+		c.web.HandleHijack(req, conn, brw)
+		return nil
+	}
+
 	suffix := req.URL.EscapedPath()
 	if !strings.HasPrefix(suffix, "/") {
 		suffix = "/" + suffix
@@ -357,7 +371,7 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	parser.UseResponse(resp)
 	go func() {
-		if err := parser.Finish(); err != nil {
+		if err := parser.Finish(c.web); err != nil {
 			slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
 		}
 	}()
