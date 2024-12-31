@@ -13,10 +13,6 @@ import (
 	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
-	"subtrace.dev/cmd/proxy"
-	"subtrace.dev/cmd/run"
-	"subtrace.dev/cmd/version"
-	"subtrace.dev/cmd/worker"
 )
 
 func main() {
@@ -26,20 +22,12 @@ func main() {
 	c := new(ffcli.Command)
 	c.Name = filepath.Base(os.Args[0])
 	c.ShortUsage = "subtrace <command>"
-
-	c.Subcommands = append(c.Subcommands, run.NewCommand())
-	c.Subcommands = append(c.Subcommands, proxy.NewCommand())
-	c.Subcommands = append(c.Subcommands, worker.NewCommand())
-	c.Subcommands = append(c.Subcommands, version.NewCommand())
+	c.Subcommands = subcommands
 
 	c.FlagSet = flag.NewFlagSet("subtrace", flag.ContinueOnError)
 	c.FlagSet.SetOutput(os.Stdout)
 	c.Exec = func(ctx context.Context, args []string) error {
-		text := c.UsageFunc(c)
-		if len(args) == 0 {
-			text += run.ExtraHelp()
-		}
-		fmt.Fprintf(os.Stdout, "%s\n", text)
+		fmt.Fprintf(os.Stdout, "%s\n", c.UsageFunc(c))
 
 		// Using os.Args and not args[0] because `subtrace -- curl` calls Exec with
 		// args={"curl"}, not args={"--", "curl"}. The real error is the lack of
