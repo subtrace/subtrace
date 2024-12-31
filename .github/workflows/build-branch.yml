@@ -25,10 +25,12 @@ jobs:
         version=$(printf "b%03d" "$(git log --oneline | wc -l)")
         echo "version=${version}"
 
-        for arch in amd64 arm64; do
-          echo "GOARCH=${arch} go build"
-          GOARCH=${arch} time make subtrace
-          mv subtrace subtrace-linux-${arch}
+        for os in linux darwin; do
+          for arch in amd64 arm64; do
+            echo "GOOS=${os} GOARCH=${arch} go build"
+            GOOS=${os} GOARCH=${arch} time make subtrace
+            mv subtrace subtrace-${os}-${arch}
+          done
         done
 
         echo "metadata:"
