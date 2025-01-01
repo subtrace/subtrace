@@ -65,3 +65,15 @@ message Result {
   CompressionMode compression_mode = 5;
   bytes compressed_data = 6;
 }
+
+// POST /api/ValidateToken
+message ValidateToken {
+  message Request {
+    // Empty because token is sent in Authorization header
+  }
+
+  message Response {
+    string error = 1000;
+    bool is_valid = 1;
+  }
+}

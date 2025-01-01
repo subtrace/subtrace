@@ -114,18 +114,16 @@ func (CompressionMode) EnumDescriptor() ([]byte, []int) {
 
 // POST /api/CreateTunnel
 type Create struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Create) Reset() {
 	*x = Create{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_tunnel_tunnel_proto_msgTypes[0]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_tunnel_tunnel_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *Create) String() string {
@@ -136,7 +134,7 @@ func (*Create) ProtoMessage() {}
 
 func (x *Create) ProtoReflect() protoreflect.Message {
 	mi := &file_tunnel_tunnel_proto_msgTypes[0]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -153,18 +151,16 @@ func (*Create) Descriptor() ([]byte, []int) {
 
 // POST /api/ListOpenTunnels
 type ListOpen struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListOpen) Reset() {
 	*x = ListOpen{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_tunnel_tunnel_proto_msgTypes[1]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_tunnel_tunnel_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *ListOpen) String() string {
@@ -175,7 +171,7 @@ func (*ListOpen) ProtoMessage() {}
 
 func (x *ListOpen) ProtoReflect() protoreflect.Message {
 	mi := &file_tunnel_tunnel_proto_msgTypes[1]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -191,21 +187,18 @@ func (*ListOpen) Descriptor() ([]byte, []int) {
 }
 
 type Insert struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TunnelQueryId string                 `protobuf:"bytes,1,opt,name=tunnel_query_id,json=tunnelQueryId,proto3" json:"tunnel_query_id,omitempty"`
+	Events        []string               `protobuf:"bytes,2,rep,name=events,proto3" json:"events,omitempty"`
 	unknownFields protoimpl.UnknownFields
-
-	TunnelQueryId string   `protobuf:"bytes,1,opt,name=tunnel_query_id,json=tunnelQueryId,proto3" json:"tunnel_query_id,omitempty"`
-	Events        []string `protobuf:"bytes,2,rep,name=events,proto3" json:"events,omitempty"`
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Insert) Reset() {
 	*x = Insert{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_tunnel_tunnel_proto_msgTypes[2]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_tunnel_tunnel_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *Insert) String() string {
@@ -216,7 +209,7 @@ func (*Insert) ProtoMessage() {}
 
 func (x *Insert) ProtoReflect() protoreflect.Message {
 	mi := &file_tunnel_tunnel_proto_msgTypes[2]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -246,21 +239,18 @@ func (x *Insert) GetEvents() []string {
 }
 
 type Select struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TunnelQueryId string                 `protobuf:"bytes,1,opt,name=tunnel_query_id,json=tunnelQueryId,proto3" json:"tunnel_query_id,omitempty"`
+	SqlStatement  string                 `protobuf:"bytes,2,opt,name=sql_statement,json=sqlStatement,proto3" json:"sql_statement,omitempty"`
 	unknownFields protoimpl.UnknownFields
-
-	TunnelQueryId string `protobuf:"bytes,1,opt,name=tunnel_query_id,json=tunnelQueryId,proto3" json:"tunnel_query_id,omitempty"`
-	SqlStatement  string `protobuf:"bytes,2,opt,name=sql_statement,json=sqlStatement,proto3" json:"sql_statement,omitempty"`
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Select) Reset() {
 	*x = Select{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_tunnel_tunnel_proto_msgTypes[3]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_tunnel_tunnel_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *Select) String() string {
@@ -271,7 +261,7 @@ func (*Select) ProtoMessage() {}
 
 func (x *Select) ProtoReflect() protoreflect.Message {
 	mi := &file_tunnel_tunnel_proto_msgTypes[3]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -301,25 +291,22 @@ func (x *Select) GetSqlStatement() string {
 }
 
 type Result struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
-	TunnelQueryId     string          `protobuf:"bytes,1,opt,name=tunnel_query_id,json=tunnelQueryId,proto3" json:"tunnel_query_id,omitempty"`
-	TunnelError       string          `protobuf:"bytes,2,opt,name=tunnel_error,json=tunnelError,proto3" json:"tunnel_error,omitempty"`
-	ClickhouseQueryId string          `protobuf:"bytes,3,opt,name=clickhouse_query_id,json=clickhouseQueryId,proto3" json:"clickhouse_query_id,omitempty"`
-	ClickhouseError   string          `protobuf:"bytes,4,opt,name=clickhouse_error,json=clickhouseError,proto3" json:"clickhouse_error,omitempty"`
-	CompressionMode   CompressionMode `protobuf:"varint,5,opt,name=compression_mode,json=compressionMode,proto3,enum=subtrace.tunnel.CompressionMode" json:"compression_mode,omitempty"`
-	CompressedData    []byte          `protobuf:"bytes,6,opt,name=compressed_data,json=compressedData,proto3" json:"compressed_data,omitempty"`
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	TunnelQueryId     string                 `protobuf:"bytes,1,opt,name=tunnel_query_id,json=tunnelQueryId,proto3" json:"tunnel_query_id,omitempty"`
+	TunnelError       string                 `protobuf:"bytes,2,opt,name=tunnel_error,json=tunnelError,proto3" json:"tunnel_error,omitempty"`
+	ClickhouseQueryId string                 `protobuf:"bytes,3,opt,name=clickhouse_query_id,json=clickhouseQueryId,proto3" json:"clickhouse_query_id,omitempty"`
+	ClickhouseError   string                 `protobuf:"bytes,4,opt,name=clickhouse_error,json=clickhouseError,proto3" json:"clickhouse_error,omitempty"`
+	CompressionMode   CompressionMode        `protobuf:"varint,5,opt,name=compression_mode,json=compressionMode,proto3,enum=subtrace.tunnel.CompressionMode" json:"compression_mode,omitempty"`
+	CompressedData    []byte                 `protobuf:"bytes,6,opt,name=compressed_data,json=compressedData,proto3" json:"compressed_data,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Result) Reset() {
 	*x = Result{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_tunnel_tunnel_proto_msgTypes[4]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_tunnel_tunnel_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *Result) String() string {
@@ -330,7 +317,7 @@ func (*Result) ProtoMessage() {}
 
 func (x *Result) ProtoReflect() protoreflect.Message {
 	mi := &file_tunnel_tunnel_proto_msgTypes[4]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -387,22 +374,56 @@ func (x *Result) GetCompressedData() []byte {
 	return nil
 }
 
-type Create_Request struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
+// POST /api/ValidateToken
+type ValidateToken struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
 
-	NamespaceId *string `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3,oneof" json:"namespace_id,omitempty"`
-	Role        Role    `protobuf:"varint,2,opt,name=role,proto3,enum=subtrace.tunnel.Role" json:"role,omitempty"`
+func (x *ValidateToken) Reset() {
+	*x = ValidateToken{}
+	mi := &file_tunnel_tunnel_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ValidateToken) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ValidateToken) ProtoMessage() {}
+
+func (x *ValidateToken) ProtoReflect() protoreflect.Message {
+	mi := &file_tunnel_tunnel_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ValidateToken.ProtoReflect.Descriptor instead.
+func (*ValidateToken) Descriptor() ([]byte, []int) {
+	return file_tunnel_tunnel_proto_rawDescGZIP(), []int{5}
+}
+
+type Create_Request struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NamespaceId   *string                `protobuf:"bytes,1,opt,name=namespace_id,json=namespaceId,proto3,oneof" json:"namespace_id,omitempty"`
+	Role          Role                   `protobuf:"varint,2,opt,name=role,proto3,enum=subtrace.tunnel.Role" json:"role,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Create_Request) Reset() {
 	*x = Create_Request{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_tunnel_tunnel_proto_msgTypes[5]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_tunnel_tunnel_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *Create_Request) String() string {
@@ -412,8 +433,8 @@ func (x *Create_Request) String() string {
 func (*Create_Request) ProtoMessage() {}
 
 func (x *Create_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_tunnel_proto_msgTypes[5]
-	if protoimpl.UnsafeEnabled && x != nil {
+	mi := &file_tunnel_tunnel_proto_msgTypes[6]
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -443,22 +464,19 @@ func (x *Create_Request) GetRole() Role {
 }
 
 type Create_Response struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Error         string                 `protobuf:"bytes,1000,opt,name=error,proto3" json:"error,omitempty"`
+	TunnelId      string                 `protobuf:"bytes,1,opt,name=tunnel_id,json=tunnelId,proto3" json:"tunnel_id,omitempty"`
+	Endpoint      string                 `protobuf:"bytes,2,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
 	unknownFields protoimpl.UnknownFields
-
-	Error    string `protobuf:"bytes,1000,opt,name=error,proto3" json:"error,omitempty"`
-	TunnelId string `protobuf:"bytes,1,opt,name=tunnel_id,json=tunnelId,proto3" json:"tunnel_id,omitempty"`
-	Endpoint string `protobuf:"bytes,2,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Create_Response) Reset() {
 	*x = Create_Response{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_tunnel_tunnel_proto_msgTypes[6]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_tunnel_tunnel_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *Create_Response) String() string {
@@ -468,8 +486,8 @@ func (x *Create_Response) String() string {
 func (*Create_Response) ProtoMessage() {}
 
 func (x *Create_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_tunnel_proto_msgTypes[6]
-	if protoimpl.UnsafeEnabled && x != nil {
+	mi := &file_tunnel_tunnel_proto_msgTypes[7]
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -506,20 +524,17 @@ func (x *Create_Response) GetEndpoint() string {
 }
 
 type ListOpen_Request struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
-	CreateAfterTime int64 `protobuf:"varint,1,opt,name=create_after_time,json=createAfterTime,proto3" json:"create_after_time,omitempty"`
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	CreateAfterTime int64                  `protobuf:"varint,1,opt,name=create_after_time,json=createAfterTime,proto3" json:"create_after_time,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ListOpen_Request) Reset() {
 	*x = ListOpen_Request{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_tunnel_tunnel_proto_msgTypes[7]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_tunnel_tunnel_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *ListOpen_Request) String() string {
@@ -529,8 +544,8 @@ func (x *ListOpen_Request) String() string {
 func (*ListOpen_Request) ProtoMessage() {}
 
 func (x *ListOpen_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_tunnel_proto_msgTypes[7]
-	if protoimpl.UnsafeEnabled && x != nil {
+	mi := &file_tunnel_tunnel_proto_msgTypes[8]
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -553,23 +568,20 @@ func (x *ListOpen_Request) GetCreateAfterTime() int64 {
 }
 
 type ListOpen_Item struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TunnelId      string                 `protobuf:"bytes,1,opt,name=tunnel_id,json=tunnelId,proto3" json:"tunnel_id,omitempty"`
+	Endpoint      string                 `protobuf:"bytes,2,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	Role          Role                   `protobuf:"varint,3,opt,name=role,proto3,enum=subtrace.tunnel.Role" json:"role,omitempty"`
+	NamespaceId   string                 `protobuf:"bytes,4,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
-
-	TunnelId    string `protobuf:"bytes,1,opt,name=tunnel_id,json=tunnelId,proto3" json:"tunnel_id,omitempty"`
-	Endpoint    string `protobuf:"bytes,2,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	Role        Role   `protobuf:"varint,3,opt,name=role,proto3,enum=subtrace.tunnel.Role" json:"role,omitempty"`
-	NamespaceId string `protobuf:"bytes,4,opt,name=namespace_id,json=namespaceId,proto3" json:"namespace_id,omitempty"`
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListOpen_Item) Reset() {
 	*x = ListOpen_Item{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_tunnel_tunnel_proto_msgTypes[8]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_tunnel_tunnel_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *ListOpen_Item) String() string {
@@ -579,8 +591,8 @@ func (x *ListOpen_Item) String() string {
 func (*ListOpen_Item) ProtoMessage() {}
 
 func (x *ListOpen_Item) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_tunnel_proto_msgTypes[8]
-	if protoimpl.UnsafeEnabled && x != nil {
+	mi := &file_tunnel_tunnel_proto_msgTypes[9]
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -624,21 +636,18 @@ func (x *ListOpen_Item) GetNamespaceId() string {
 }
 
 type ListOpen_Response struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Error         string                 `protobuf:"bytes,1000,opt,name=error,proto3" json:"error,omitempty"`
+	Tunnels       []*ListOpen_Item       `protobuf:"bytes,1,rep,name=tunnels,proto3" json:"tunnels,omitempty"`
 	unknownFields protoimpl.UnknownFields
-
-	Error   string           `protobuf:"bytes,1000,opt,name=error,proto3" json:"error,omitempty"`
-	Tunnels []*ListOpen_Item `protobuf:"bytes,1,rep,name=tunnels,proto3" json:"tunnels,omitempty"`
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListOpen_Response) Reset() {
 	*x = ListOpen_Response{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_tunnel_tunnel_proto_msgTypes[9]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_tunnel_tunnel_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *ListOpen_Response) String() string {
@@ -648,8 +657,8 @@ func (x *ListOpen_Response) String() string {
 func (*ListOpen_Response) ProtoMessage() {}
 
 func (x *ListOpen_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_tunnel_tunnel_proto_msgTypes[9]
-	if protoimpl.UnsafeEnabled && x != nil {
+	mi := &file_tunnel_tunnel_proto_msgTypes[10]
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -676,6 +685,94 @@ func (x *ListOpen_Response) GetTunnels() []*ListOpen_Item {
 		return x.Tunnels
 	}
 	return nil
+}
+
+type ValidateToken_Request struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ValidateToken_Request) Reset() {
+	*x = ValidateToken_Request{}
+	mi := &file_tunnel_tunnel_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ValidateToken_Request) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ValidateToken_Request) ProtoMessage() {}
+
+func (x *ValidateToken_Request) ProtoReflect() protoreflect.Message {
+	mi := &file_tunnel_tunnel_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ValidateToken_Request.ProtoReflect.Descriptor instead.
+func (*ValidateToken_Request) Descriptor() ([]byte, []int) {
+	return file_tunnel_tunnel_proto_rawDescGZIP(), []int{5, 0}
+}
+
+type ValidateToken_Response struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Error         string                 `protobuf:"bytes,1000,opt,name=error,proto3" json:"error,omitempty"`
+	IsValid       bool                   `protobuf:"varint,1,opt,name=is_valid,json=isValid,proto3" json:"is_valid,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ValidateToken_Response) Reset() {
+	*x = ValidateToken_Response{}
+	mi := &file_tunnel_tunnel_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ValidateToken_Response) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ValidateToken_Response) ProtoMessage() {}
+
+func (x *ValidateToken_Response) ProtoReflect() protoreflect.Message {
+	mi := &file_tunnel_tunnel_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ValidateToken_Response.ProtoReflect.Descriptor instead.
+func (*ValidateToken_Response) Descriptor() ([]byte, []int) {
+	return file_tunnel_tunnel_proto_rawDescGZIP(), []int{5, 1}
+}
+
+func (x *ValidateToken_Response) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ValidateToken_Response) GetIsValid() bool {
+	if x != nil {
+		return x.IsValid
+	}
+	return false
 }
 
 var File_tunnel_tunnel_proto protoreflect.FileDescriptor
@@ -744,15 +841,20 @@ var file_tunnel_tunnel_proto_rawDesc = []byte{
 	0x70, 0x72, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x4d, 0x6f, 0x64, 0x65, 0x12, 0x27, 0x0a, 0x0f,
 	0x63, 0x6f, 0x6d, 0x70, 0x72, 0x65, 0x73, 0x73, 0x65, 0x64, 0x5f, 0x64, 0x61, 0x74, 0x61, 0x18,
 	0x06, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x0e, 0x63, 0x6f, 0x6d, 0x70, 0x72, 0x65, 0x73, 0x73, 0x65,
-	0x64, 0x44, 0x61, 0x74, 0x61, 0x2a, 0x1e, 0x0a, 0x04, 0x52, 0x6f, 0x6c, 0x65, 0x12, 0x0a, 0x0a,
-	0x06, 0x49, 0x4e, 0x53, 0x45, 0x52, 0x54, 0x10, 0x00, 0x12, 0x0a, 0x0a, 0x06, 0x53, 0x45, 0x4c,
-	0x45, 0x43, 0x54, 0x10, 0x01, 0x2a, 0x3d, 0x0a, 0x0f, 0x43, 0x6f, 0x6d, 0x70, 0x72, 0x65, 0x73,
-	0x73, 0x69, 0x6f, 0x6e, 0x4d, 0x6f, 0x64, 0x65, 0x12, 0x14, 0x0a, 0x10, 0x43, 0x4f, 0x4d, 0x50,
-	0x52, 0x45, 0x53, 0x53, 0x49, 0x4f, 0x4e, 0x5f, 0x4e, 0x4f, 0x4e, 0x45, 0x10, 0x00, 0x12, 0x14,
-	0x0a, 0x10, 0x43, 0x4f, 0x4d, 0x50, 0x52, 0x45, 0x53, 0x53, 0x49, 0x4f, 0x4e, 0x5f, 0x47, 0x5a,
-	0x49, 0x50, 0x10, 0x01, 0x42, 0x15, 0x5a, 0x13, 0x73, 0x75, 0x62, 0x74, 0x72, 0x61, 0x63, 0x65,
-	0x2e, 0x64, 0x65, 0x76, 0x2f, 0x74, 0x75, 0x6e, 0x6e, 0x65, 0x6c, 0x62, 0x06, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x33,
+	0x64, 0x44, 0x61, 0x74, 0x61, 0x22, 0x58, 0x0a, 0x0d, 0x56, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74,
+	0x65, 0x54, 0x6f, 0x6b, 0x65, 0x6e, 0x1a, 0x09, 0x0a, 0x07, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x1a, 0x3c, 0x0a, 0x08, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x15, 0x0a,
+	0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x18, 0xe8, 0x07, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x65,
+	0x72, 0x72, 0x6f, 0x72, 0x12, 0x19, 0x0a, 0x08, 0x69, 0x73, 0x5f, 0x76, 0x61, 0x6c, 0x69, 0x64,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x69, 0x73, 0x56, 0x61, 0x6c, 0x69, 0x64, 0x2a,
+	0x1e, 0x0a, 0x04, 0x52, 0x6f, 0x6c, 0x65, 0x12, 0x0a, 0x0a, 0x06, 0x49, 0x4e, 0x53, 0x45, 0x52,
+	0x54, 0x10, 0x00, 0x12, 0x0a, 0x0a, 0x06, 0x53, 0x45, 0x4c, 0x45, 0x43, 0x54, 0x10, 0x01, 0x2a,
+	0x3d, 0x0a, 0x0f, 0x43, 0x6f, 0x6d, 0x70, 0x72, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x4d, 0x6f,
+	0x64, 0x65, 0x12, 0x14, 0x0a, 0x10, 0x43, 0x4f, 0x4d, 0x50, 0x52, 0x45, 0x53, 0x53, 0x49, 0x4f,
+	0x4e, 0x5f, 0x4e, 0x4f, 0x4e, 0x45, 0x10, 0x00, 0x12, 0x14, 0x0a, 0x10, 0x43, 0x4f, 0x4d, 0x50,
+	0x52, 0x45, 0x53, 0x53, 0x49, 0x4f, 0x4e, 0x5f, 0x47, 0x5a, 0x49, 0x50, 0x10, 0x01, 0x42, 0x15,
+	0x5a, 0x13, 0x73, 0x75, 0x62, 0x74, 0x72, 0x61, 0x63, 0x65, 0x2e, 0x64, 0x65, 0x76, 0x2f, 0x74,
+	0x75, 0x6e, 0x6e, 0x65, 0x6c, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -768,26 +870,29 @@ func file_tunnel_tunnel_proto_rawDescGZIP() []byte {
 }
 
 var file_tunnel_tunnel_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_tunnel_tunnel_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_tunnel_tunnel_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_tunnel_tunnel_proto_goTypes = []any{
-	(Role)(0),                 // 0: subtrace.tunnel.Role
-	(CompressionMode)(0),      // 1: subtrace.tunnel.CompressionMode
-	(*Create)(nil),            // 2: subtrace.tunnel.Create
-	(*ListOpen)(nil),          // 3: subtrace.tunnel.ListOpen
-	(*Insert)(nil),            // 4: subtrace.tunnel.Insert
-	(*Select)(nil),            // 5: subtrace.tunnel.Select
-	(*Result)(nil),            // 6: subtrace.tunnel.Result
-	(*Create_Request)(nil),    // 7: subtrace.tunnel.Create.Request
-	(*Create_Response)(nil),   // 8: subtrace.tunnel.Create.Response
-	(*ListOpen_Request)(nil),  // 9: subtrace.tunnel.ListOpen.Request
-	(*ListOpen_Item)(nil),     // 10: subtrace.tunnel.ListOpen.Item
-	(*ListOpen_Response)(nil), // 11: subtrace.tunnel.ListOpen.Response
+	(Role)(0),                      // 0: subtrace.tunnel.Role
+	(CompressionMode)(0),           // 1: subtrace.tunnel.CompressionMode
+	(*Create)(nil),                 // 2: subtrace.tunnel.Create
+	(*ListOpen)(nil),               // 3: subtrace.tunnel.ListOpen
+	(*Insert)(nil),                 // 4: subtrace.tunnel.Insert
+	(*Select)(nil),                 // 5: subtrace.tunnel.Select
+	(*Result)(nil),                 // 6: subtrace.tunnel.Result
+	(*ValidateToken)(nil),          // 7: subtrace.tunnel.ValidateToken
+	(*Create_Request)(nil),         // 8: subtrace.tunnel.Create.Request
+	(*Create_Response)(nil),        // 9: subtrace.tunnel.Create.Response
+	(*ListOpen_Request)(nil),       // 10: subtrace.tunnel.ListOpen.Request
+	(*ListOpen_Item)(nil),          // 11: subtrace.tunnel.ListOpen.Item
+	(*ListOpen_Response)(nil),      // 12: subtrace.tunnel.ListOpen.Response
+	(*ValidateToken_Request)(nil),  // 13: subtrace.tunnel.ValidateToken.Request
+	(*ValidateToken_Response)(nil), // 14: subtrace.tunnel.ValidateToken.Response
 }
 var file_tunnel_tunnel_proto_depIdxs = []int32{
 	1,  // 0: subtrace.tunnel.Result.compression_mode:type_name -> subtrace.tunnel.CompressionMode
 	0,  // 1: subtrace.tunnel.Create.Request.role:type_name -> subtrace.tunnel.Role
 	0,  // 2: subtrace.tunnel.ListOpen.Item.role:type_name -> subtrace.tunnel.Role
-	10, // 3: subtrace.tunnel.ListOpen.Response.tunnels:type_name -> subtrace.tunnel.ListOpen.Item
+	11, // 3: subtrace.tunnel.ListOpen.Response.tunnels:type_name -> subtrace.tunnel.ListOpen.Item
 	4,  // [4:4] is the sub-list for method output_type
 	4,  // [4:4] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
@@ -800,136 +905,14 @@ func file_tunnel_tunnel_proto_init() {
 	if File_tunnel_tunnel_proto != nil {
 		return
 	}
-	if !protoimpl.UnsafeEnabled {
-		file_tunnel_tunnel_proto_msgTypes[0].Exporter = func(v any, i int) any {
-			switch v := v.(*Create); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_tunnel_tunnel_proto_msgTypes[1].Exporter = func(v any, i int) any {
-			switch v := v.(*ListOpen); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_tunnel_tunnel_proto_msgTypes[2].Exporter = func(v any, i int) any {
-			switch v := v.(*Insert); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_tunnel_tunnel_proto_msgTypes[3].Exporter = func(v any, i int) any {
-			switch v := v.(*Select); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_tunnel_tunnel_proto_msgTypes[4].Exporter = func(v any, i int) any {
-			switch v := v.(*Result); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_tunnel_tunnel_proto_msgTypes[5].Exporter = func(v any, i int) any {
-			switch v := v.(*Create_Request); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_tunnel_tunnel_proto_msgTypes[6].Exporter = func(v any, i int) any {
-			switch v := v.(*Create_Response); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_tunnel_tunnel_proto_msgTypes[7].Exporter = func(v any, i int) any {
-			switch v := v.(*ListOpen_Request); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_tunnel_tunnel_proto_msgTypes[8].Exporter = func(v any, i int) any {
-			switch v := v.(*ListOpen_Item); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_tunnel_tunnel_proto_msgTypes[9].Exporter = func(v any, i int) any {
-			switch v := v.(*ListOpen_Response); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-	}
-	file_tunnel_tunnel_proto_msgTypes[5].OneofWrappers = []any{}
+	file_tunnel_tunnel_proto_msgTypes[6].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_tunnel_tunnel_proto_rawDesc,
 			NumEnums:      2,
-			NumMessages:   10,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
