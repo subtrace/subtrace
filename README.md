@@ -13,10 +13,21 @@ the requests you care about using simple SQL queries and dig into the details
 (e.g. headers, payload, latency). With Subtrace, you'll never have to `console.log()`
 a HTTP request again.
 
-**Features:**
+#### Features
 
 * Works out-of-the-box with all languages (Python, Node, Go, and everything else)
 * Zero instrumentation code changes needed
 * Less than 100µs performance overhead
 * Built on Clickhouse
 * Open source
+
+#### Code Contributions
+
+While Subtrace is [open source](https://github.com/subtrace/subtrace/blob/master/LICENSE),
+we're not currently accepting pull requests. This is because we're a startup
+with a very small team and we don't have the resources or documentation
+necessary to maintain a good open source community in a way that still allows
+us to move quickly. This will probably change in the future.
+
+With that said, we welcome all feature requests and bug reports, so feel free
+to [open an issue](https://github.com/subtrace/subtrace/issues/new/choose).
