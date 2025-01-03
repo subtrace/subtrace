@@ -11,6 +11,12 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
+    - uses: actions/download-artifact@v4
+      with:
+        name: devtools.html.gz
+        path: ./web/bundle/devtools.html.gz
+        github-token: ${{ secrets.SUBTRACE_ARTIFACT_DOWNLAOD_TOKEN }}
+        run-id: 12591477411
     - run: |
         set -e
 
