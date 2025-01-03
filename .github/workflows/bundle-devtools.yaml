@@ -1,0 +1,18 @@
+name: bundle-devtools
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+    - run: |
+        set -e
+        apt update && apt install esbuild
+        cd web && make fetch build
+    - uses: actions/upload-artifact@v4
+      with:
+        name: devtools.html.gz
+        path: ./web/bundle/devtools.html.gz
