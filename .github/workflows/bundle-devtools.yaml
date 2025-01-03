@@ -10,7 +10,7 @@ jobs:
     - uses: actions/checkout@v4
     - run: |
         set -e
-        apt update && apt install esbuild
+        sudo apt update && sudo apt install esbuild
         cd web && make fetch build
     - uses: actions/upload-artifact@v4
       with:
