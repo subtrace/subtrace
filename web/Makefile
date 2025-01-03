@@ -3,7 +3,7 @@ default: build
 
 .PHONY: build
 build:
-	python3 build.py | gzip >web/devtools.html.gz
+	python3 build.py | gzip >bundle/devtools.html.gz
 
 .PHONY: fetch
 fetch:
