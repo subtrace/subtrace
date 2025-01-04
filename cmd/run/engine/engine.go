@@ -22,10 +22,13 @@ import (
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/syscalls"
 	"subtrace.dev/cmd/version"
+	"subtrace.dev/devtools"
 )
 
 type Engine struct {
-	seccomp   *seccomp.Listener
+	seccomp  *seccomp.Listener
+	devtools *devtools.Server
+
 	mu        sync.RWMutex
 	processes map[int]*process.Process
 	threads   map[int]*process.Process
@@ -33,9 +36,11 @@ type Engine struct {
 	inPanic   atomic.Bool
 }
 
-func New(seccomp *seccomp.Listener, root *process.Process) *Engine {
+func New(seccomp *seccomp.Listener, devtools *devtools.Server, root *process.Process) *Engine {
 	en := &Engine{
-		seccomp:   seccomp,
+		seccomp:  seccomp,
+		devtools: devtools,
+
 		processes: map[int]*process.Process{root.PID: root},
 		threads:   map[int]*process.Process{},
 		running:   make(chan struct{}),
@@ -56,7 +61,7 @@ func (eng *Engine) ensureProcessLocked(pid int) *process.Process {
 			return leader
 		}
 
-		eng.processes[pid], err = process.New(pid)
+		eng.processes[pid], err = process.New(eng.devtools, pid)
 		if err != nil {
 			panic(fmt.Errorf("new process: %w", err))
 		}
