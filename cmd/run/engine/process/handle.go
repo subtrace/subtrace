@@ -507,32 +507,32 @@ func init() {
 		return p.handleExecve(n, uintptr(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]))
 	}
 	Handlers[unix.SYS_EXECVEAT] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleExecveat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), uintptr(n.Args[3]), int(n.Args[4]))
+		return p.handleExecveat(n, int(int32(n.Args[0])), uintptr(n.Args[1]), uintptr(n.Args[2]), uintptr(n.Args[3]), int(n.Args[4]))
 	}
 
 	Handlers[unix.SYS_OPENAT] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleOpen(n, int(n.Args[0]), uintptr(n.Args[1]), int(n.Args[2]), int(n.Args[3]))
+		return p.handleOpen(n, int(int32(n.Args[0])), uintptr(n.Args[1]), int(n.Args[2]), int(n.Args[3]))
 	}
 
 	switch runtime.GOARCH {
 	case "amd64":
 		Handlers[syscalls.GetNumber("SYS_NEWFSTATAT")] = func(p *Process, n *seccomp.Notif) error {
-			return p.handleFstatat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
+			return p.handleFstatat(n, int(int32(n.Args[0])), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
 		}
 	case "arm64":
 		Handlers[syscalls.GetNumber("SYS_FSTATAT")] = func(p *Process, n *seccomp.Notif) error {
-			return p.handleFstatat(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
+			return p.handleFstatat(n, int(int32(n.Args[0])), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
 		}
 	default:
 		panic(fmt.Sprintf("GOARCH=%s: unsupported", runtime.GOARCH))
 	}
 
 	Handlers[unix.SYS_STATX] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleStatx(n, int(n.Args[0]), uintptr(n.Args[1]), int(n.Args[2]), int(n.Args[3]), uintptr(n.Args[4]))
+		return p.handleStatx(n, int(int32(n.Args[0])), uintptr(n.Args[1]), int(n.Args[2]), int(n.Args[3]), uintptr(n.Args[4]))
 	}
 
 	Handlers[unix.SYS_CLOSE] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleClose(n, int(n.Args[0]))
+		return p.handleClose(n, int(int32(n.Args[0])))
 	}
 
 	Handlers[unix.SYS_SOCKET] = func(p *Process, n *seccomp.Notif) error {
@@ -540,33 +540,33 @@ func init() {
 	}
 
 	Handlers[unix.SYS_BIND] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleBind(n, int(n.Args[0]), uintptr(n.Args[1]), int(n.Args[2]))
+		return p.handleBind(n, int(int32(n.Args[0])), uintptr(n.Args[1]), int(n.Args[2]))
 	}
 
 	Handlers[unix.SYS_CONNECT] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleConnect(n, int(n.Args[0]), uintptr(n.Args[1]), int(n.Args[2]))
+		return p.handleConnect(n, int(int32(n.Args[0])), uintptr(n.Args[1]), int(n.Args[2]))
 	}
 
 	Handlers[unix.SYS_LISTEN] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleListen(n, int(n.Args[0]), int(n.Args[1]))
+		return p.handleListen(n, int(int32(n.Args[0])), int(n.Args[1]))
 	}
 
 	Handlers[unix.SYS_ACCEPT] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleAccept(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), 0)
+		return p.handleAccept(n, int(int32(n.Args[0])), uintptr(n.Args[1]), uintptr(n.Args[2]), 0)
 	}
 	Handlers[unix.SYS_ACCEPT4] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleAccept(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
+		return p.handleAccept(n, int(int32(n.Args[0])), uintptr(n.Args[1]), uintptr(n.Args[2]), int(n.Args[3]))
 	}
 
 	Handlers[unix.SYS_GETSOCKOPT] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleGetsockopt(n, int(n.Args[0]), int(n.Args[1]), int(n.Args[2]), uintptr(n.Args[3]), uintptr(n.Args[4]))
+		return p.handleGetsockopt(n, int(int32(n.Args[0])), int(n.Args[1]), int(n.Args[2]), uintptr(n.Args[3]), uintptr(n.Args[4]))
 	}
 
 	Handlers[unix.SYS_GETSOCKNAME] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleGetsockname(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]))
+		return p.handleGetsockname(n, int(int32(n.Args[0])), uintptr(n.Args[1]), uintptr(n.Args[2]))
 	}
 
 	Handlers[unix.SYS_GETPEERNAME] = func(p *Process, n *seccomp.Notif) error {
-		return p.handleGetpeername(n, int(n.Args[0]), uintptr(n.Args[1]), uintptr(n.Args[2]))
+		return p.handleGetpeername(n, int(int32(n.Args[0])), uintptr(n.Args[1]), uintptr(n.Args[2]))
 	}
 }
