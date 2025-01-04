@@ -14,7 +14,7 @@ jobs:
     - uses: actions/download-artifact@v4
       with:
         name: devtools.html.gz
-        path: ./web/bundle
+        path: ./devtools/bundle
         github-token: ${{ secrets.SUBTRACE_ARTIFACT_DOWNLAOD_TOKEN }}
         run-id: 12591477411
     - name: Run go mod tidy check

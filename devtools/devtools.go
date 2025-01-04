@@ -1,7 +1,7 @@
 // Copyright (c) Subtrace, Inc.
 // SPDX-License-Identifier: BSD-3-Clause
 
-package web
+package devtools
 
 import (
 	"bufio"
@@ -56,13 +56,13 @@ func bundleOnce() {
 
 		r, err := gzip.NewReader(f)
 		if err != nil {
-			html = fallback(fmt.Sprintf("Subtrace failed to extract the gzip web bundle.<br><br>Error: %q", fmt.Errorf("create: %w", err)))
+			html = fallback(fmt.Sprintf("Subtrace failed to extract the gzip devtools bundle.<br><br>Error: %q", fmt.Errorf("create: %w", err)))
 			return
 		}
 
 		html, err = io.ReadAll(r)
 		if err != nil {
-			html = fallback(fmt.Sprintf("Subtrace failed to extract the gzip web bundle.<br><br>Error: %q", fmt.Errorf("read: %w", err)))
+			html = fallback(fmt.Sprintf("Subtrace failed to extract the gzip devtools bundle.<br><br>Error: %q", fmt.Errorf("read: %w", err)))
 			return
 		}
 
@@ -201,7 +201,7 @@ func (s *Server) HandleHijack(req *http.Request, conn net.Conn, brw *bufio.ReadW
 	defer prw.finish()
 
 	s.ServeHTTP(prw, req)
-	slog.Debug("web server finished handling hijacked devtools endpoint request", "path", req.URL.Path, "upgrade", req.Header.Get("upgrade"))
+	slog.Debug("devtools server finished handling hijacked devtools endpoint request", "path", req.URL.Path, "upgrade", req.Header.Get("upgrade"))
 }
 
 type pipeResponseWriter struct {
