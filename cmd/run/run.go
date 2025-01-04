@@ -31,6 +31,7 @@ import (
 	"subtrace.dev/cmd/run/kernel"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/cmd/version"
+	"subtrace.dev/devtools"
 	"subtrace.dev/event"
 	"subtrace.dev/logging"
 	"subtrace.dev/tags/cloudtags"
@@ -41,8 +42,9 @@ import (
 
 type Command struct {
 	flags struct {
-		log   *bool
-		pprof string
+		log      *bool
+		pprof    string
+		devtools string
 	}
 
 	ffcli.Command
@@ -58,6 +60,7 @@ func NewCommand() *ffcli.Command {
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.flags.log = c.FlagSet.Bool("log", false, "log trace events to stderr")
 	c.FlagSet.Int64Var(&tracer.PayloadLimitBytes, "payload-limit", 4096, "payload size limit in bytes after which request/response body will be truncated")
+	c.FlagSet.StringVar(&c.flags.devtools, "devtools", "", "path to serve the chrome devtools bundle on")
 	c.FlagSet.BoolVar(&tls.Enabled, "tls", true, "intercept outgoing TLS requests")
 	c.FlagSet.StringVar(&c.flags.pprof, "pprof", "", "write pprof CPU profile to file")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose debug logging")
@@ -332,12 +335,17 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		return 127, nil
 	}
 
-	root, err := process.New(pid)
+	if c.flags.devtools != "" && !strings.HasPrefix(c.flags.devtools, "/") {
+		c.flags.devtools = "/" + c.flags.devtools
+	}
+	devtools := devtools.NewServer(c.flags.devtools)
+
+	root, err := process.New(devtools, pid)
 	if err != nil {
 		return 0, fmt.Errorf("new process: %w", err)
 	}
 
-	eng := engine.New(sec, root)
+	eng := engine.New(sec, devtools, root)
 	go eng.Start()
 
 	var status unix.WaitStatus

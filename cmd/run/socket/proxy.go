@@ -6,6 +6,7 @@ package socket
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,14 +18,18 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/martian/v3"
 	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/tls"
+	"subtrace.dev/devtools"
 	"subtrace.dev/event"
 	"subtrace.dev/tracer"
 )
 
 type proxy struct {
+	devtools *devtools.Server
+
 	process  *net.TCPConn
 	external *net.TCPConn
 
@@ -35,8 +40,9 @@ type proxy struct {
 	tmpl *event.Event
 }
 
-func newProxy(tmpl *event.Event, isOutgoing bool) *proxy {
+func newProxy(devtools *devtools.Server, tmpl *event.Event, isOutgoing bool) *proxy {
 	return &proxy{
+		devtools:   devtools,
 		begin:      time.Now(),
 		isOutgoing: isOutgoing,
 		tmpl:       tmpl,
@@ -228,9 +234,6 @@ func (p *proxy) proxyTLS(cli, srv *bufConn) error {
 	return nil
 }
 
-// proxyHTTP proxies an HTTP connection between the client and server. If there
-// are no buffered bytes available on the client side, it falls back to the raw
-// handler.
 func (p *proxy) proxyHTTP(cli, srv *bufConn) error {
 	if cli.Buffered() == 0 {
 		return p.proxyFallback(cli, srv)
@@ -269,7 +272,23 @@ func (p *proxy) discardMulti(r ...io.Reader) error {
 	return errors.Join(errs...)
 }
 
+// proxyHTTP proxies an HTTP connection between the client and server.
 func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
+	if !p.isOutgoing && p.devtools != nil && p.devtools.HijackPath != "" {
+		lis := newSimpleListener(cli)
+		defer lis.Close()
+
+		h := p.newHijacker(srv)
+
+		mp := martian.NewProxy()
+		mp.SetRequestModifier(h)
+		mp.SetRoundTripper(h)
+		if err := mp.Serve(lis); err != nil {
+			return fmt.Errorf("martian: serve: %w", err)
+		}
+		return nil
+	}
+
 	errs := make(chan error, 3)
 
 	cr, cw := io.Pipe()
@@ -506,4 +525,102 @@ func guessProtocol(sample []byte) string {
 	}
 
 	return "unknown"
+}
+
+type simpleListener struct {
+	conn   net.Conn
+	ch     chan net.Conn
+	closed atomic.Bool
+}
+
+var _ net.Listener = new(simpleListener)
+
+func newSimpleListener(conn net.Conn) *simpleListener {
+	ch := make(chan net.Conn, 1)
+	ch <- conn
+	return &simpleListener{conn: conn, ch: ch}
+}
+
+func (l *simpleListener) Accept() (net.Conn, error) {
+	if conn, ok := <-l.ch; ok {
+		return conn, nil
+	}
+	return nil, fmt.Errorf("listener: closed")
+}
+
+func (l *simpleListener) Close() error {
+	if !l.closed.CompareAndSwap(false, true) {
+		return fmt.Errorf("listener: already closed")
+	}
+
+	close(l.ch)
+	return nil
+}
+
+func (l *simpleListener) Addr() net.Addr {
+	return l.conn.LocalAddr()
+}
+
+type hijacker struct {
+	proxy *proxy
+	begin time.Time
+	conn  net.Conn
+}
+
+var _ http.RoundTripper = new(hijacker)
+
+func (p *proxy) newHijacker(conn net.Conn) *hijacker {
+	return &hijacker{
+		proxy: p,
+		begin: time.Now(),
+		conn:  conn,
+	}
+}
+
+func (h *hijacker) ModifyRequest(req *http.Request) error {
+	if req.URL.Path == h.proxy.devtools.HijackPath {
+		conn, brw, err := martian.NewContext(req).Session().Hijack()
+		if err != nil {
+			return fmt.Errorf("subtrace: failed to hijack devtools endpoint: %w", err)
+		}
+		h.proxy.devtools.HandleHijack(req, conn, brw)
+	}
+
+	return nil
+}
+
+func (h *hijacker) RoundTrip(req *http.Request) (*http.Response, error) {
+	eventID := uuid.New()
+
+	parser := tracer.NewParser(eventID)
+	parser.UseRequest(req)
+
+	tr := &http.Transport{
+		DialContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
+			return h.conn, nil
+		},
+		Dial: func(network string, addr string) (net.Conn, error) {
+			return h.conn, nil
+		},
+		DialTLSContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
+			return nil, fmt.Errorf("invalid use of DialTLSContext in simpleRoundTripper")
+		},
+		DialTLS: func(network string, addr string) (net.Conn, error) {
+			return nil, fmt.Errorf("invalid use of DialTLS in simpleRoundTripper")
+		},
+	}
+
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+
+	parser.UseResponse(resp)
+	go func() {
+		if err := parser.Finish(h.proxy.devtools); err != nil {
+			slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
+		}
+	}()
+
+	return resp, err
 }

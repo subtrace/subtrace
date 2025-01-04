@@ -20,10 +20,13 @@ import (
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/socket"
+	"subtrace.dev/devtools"
 	"subtrace.dev/event"
 )
 
 type Process struct {
+	devtools *devtools.Server
+
 	PID    int
 	Exited chan struct{}
 
@@ -36,7 +39,7 @@ type Process struct {
 }
 
 // New creates a new process with the given PID.
-func New(pid int) (*Process, error) {
+func New(devtools *devtools.Server, pid int) (*Process, error) {
 	ret, _, errno := unix.Syscall(unix.SYS_PIDFD_OPEN, uintptr(pid), 0, 0)
 	if errno != 0 {
 		return nil, fmt.Errorf("pidfd_open %d: %w", pid, errno)
@@ -45,6 +48,8 @@ func New(pid int) (*Process, error) {
 	defer pidfd.DecRef()
 
 	return &Process{
+		devtools: devtools,
+
 		PID:    pid,
 		Exited: make(chan struct{}),
 

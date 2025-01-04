@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/fd"
+	"subtrace.dev/devtools"
 	"subtrace.dev/event"
 )
 
@@ -146,10 +147,11 @@ type Socket struct {
 
 	current atomic.Pointer[immutable]
 
-	tmpl *event.Event
+	devtools *devtools.Server
+	tmpl     *event.Event
 }
 
-func NewSocket(tmpl *event.Event, domain int, typ int) (*Socket, error) {
+func NewSocket(devtools *devtools.Server, tmpl *event.Event, domain int, typ int) (*Socket, error) {
 	if domain != unix.AF_INET && domain != unix.AF_INET6 {
 		return nil, fmt.Errorf("unsupported domain 0x%x", domain)
 	}
@@ -167,7 +169,7 @@ func NewSocket(tmpl *event.Event, domain int, typ int) (*Socket, error) {
 	fd := fd.NewFD(ret)
 	defer fd.DecRef()
 
-	s := &Socket{Domain: domain, FD: fd, tmpl: tmpl}
+	s := &Socket{Domain: domain, FD: fd, devtools: devtools, tmpl: tmpl}
 	s.current.Store(&immutable{status: StatusPassive})
 	slog.Debug("created socket", "sock", s)
 	return s, nil
@@ -236,7 +238,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 		return unix.EBADF, nil
 	}
 
-	proxy := newProxy(s.tmpl, true)
+	proxy := newProxy(s.devtools, s.tmpl, true)
 
 	isBlocking, err := s.isBlocking()
 	if err != nil {
@@ -710,7 +712,7 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 			external, err := lis.Accept()
 			switch {
 			case err == nil:
-				p := newProxy(s.tmpl, false)
+				p := newProxy(s.devtools, s.tmpl, false)
 				p.external = external.(*net.TCPConn)
 				buffer <- p
 			case errors.Is(err, net.ErrClosed):
@@ -804,7 +806,7 @@ func (s *Socket) Accept(flags int) (*Socket, syscall.Errno, error) {
 	}
 	slog.Debug("accepter dequeued accepted connection", "sock", s, "addr", addr)
 
-	child := &Socket{Domain: s.Domain, tmpl: s.tmpl}
+	child := &Socket{Domain: s.Domain, devtools: s.devtools, tmpl: s.tmpl}
 	child.FD = fd.NewFD(ret)
 	defer child.FD.DecRef()
 
