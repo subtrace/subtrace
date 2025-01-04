@@ -315,7 +315,10 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			parser := tracer.NewParser(eventID)
 
 			parser.UseRequest(req)
-			go io.Copy(io.Discard, req.Body)
+			go func() {
+				defer req.Body.Close()
+				io.Copy(io.Discard, req.Body)
+			}()
 
 			resp, err := http.ReadResponse(bsr, req)
 			switch {
@@ -329,7 +332,10 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			}
 
 			parser.UseResponse(resp)
-			go io.Copy(io.Discard, resp.Body)
+			go func() {
+				defer resp.Body.Close()
+				io.Copy(io.Discard, resp.Body)
+			}()
 
 			if err := parser.Finish(nil); err != nil {
 				slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
