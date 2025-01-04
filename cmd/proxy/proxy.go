@@ -26,13 +26,13 @@ import (
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"subtrace.dev/cmd/version"
+	"subtrace.dev/devtools"
 	"subtrace.dev/event"
 	"subtrace.dev/logging"
 	"subtrace.dev/tags/cloudtags"
 	"subtrace.dev/tags/gcptags"
 	"subtrace.dev/tags/kubetags"
 	"subtrace.dev/tracer"
-	"subtrace.dev/web"
 )
 
 type Command struct {
@@ -43,9 +43,9 @@ type Command struct {
 		log    *bool
 	}
 
-	runtime *goja.Runtime
-	rules   []rule
-	web     *web.Server
+	runtime  *goja.Runtime
+	rules    []rule
+	devtools *devtools.Server
 
 	ffcli.Command
 }
@@ -132,7 +132,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		}
 	}
 
-	c.web = web.NewServer()
+	c.devtools = devtools.NewServer()
 
 	c.initEventBase()
 
@@ -316,7 +316,7 @@ func (c *Command) ModifyRequest(req *http.Request) error {
 			return fmt.Errorf("subtrace: failed to hijack devtools endpoint: %w", err)
 		}
 
-		c.web.HandleHijack(req, conn, brw)
+		c.devtools.HandleHijack(req, conn, brw)
 		return nil
 	}
 
@@ -371,7 +371,7 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	parser.UseResponse(resp)
 	go func() {
-		if err := parser.Finish(c.web); err != nil {
+		if err := parser.Finish(c.devtools); err != nil {
 			slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
 		}
 	}()

@@ -11,8 +11,8 @@ jobs:
     - run: |
         set -e
         sudo apt update && sudo apt install esbuild
-        cd web && make fetch build
+        cd devtools && make fetch build
     - uses: actions/upload-artifact@v4
       with:
         name: devtools.html.gz
-        path: ./web/bundle/devtools.html.gz
+        path: ./devtools/bundle/devtools.html.gz

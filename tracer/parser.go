@@ -20,8 +20,8 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/google/martian/v3/har"
 	"github.com/google/uuid"
+	"subtrace.dev/devtools"
 	"subtrace.dev/event"
-	"subtrace.dev/web"
 )
 
 var PayloadLimitBytes int64 = 4096 // bytes
@@ -173,7 +173,7 @@ func (p *Parser) UseResponse(resp *http.Response) {
 	}()
 }
 
-func (p *Parser) Finish(web *web.Server) error {
+func (p *Parser) Finish(devtools *devtools.Server) error {
 	p.wg.Wait()
 	for i := 0; i < 2; i++ {
 		if err := <-p.errs; err != nil {
@@ -197,8 +197,8 @@ func (p *Parser) Finish(web *web.Server) error {
 		return fmt.Errorf("encode json: %w", err)
 	}
 
-	if web != nil {
-		go web.Send(b)
+	if devtools != nil {
+		go devtools.Send(b)
 	}
 
 	ev := event.NewFromTemplate(event.Base)
