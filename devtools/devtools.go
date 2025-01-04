@@ -71,14 +71,16 @@ func bundleOnce() {
 }
 
 type Server struct {
+	HijackPath string
+
 	mu    sync.Mutex
 	conns []*websocket.Conn
 }
 
 var _ http.Handler = new(Server)
 
-func NewServer() *Server {
-	return &Server{}
+func NewServer(hijackPath string) *Server {
+	return &Server{HijackPath: hijackPath}
 }
 
 func (s *Server) add(conn *websocket.Conn) {

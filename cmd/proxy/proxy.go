@@ -37,10 +37,11 @@ import (
 
 type Command struct {
 	flags struct {
-		config string
-		listen string
-		remote string
-		log    *bool
+		config   string
+		listen   string
+		remote   string
+		devtools string
+		log      *bool
 	}
 
 	runtime  *goja.Runtime
@@ -61,6 +62,7 @@ func NewCommand() *ffcli.Command {
 	c.FlagSet.StringVar(&c.flags.config, "config", "", "configuration file path")
 	c.FlagSet.StringVar(&c.flags.listen, "listen", "", "local address to listen on")
 	c.FlagSet.StringVar(&c.flags.remote, "remote", "", "remote address to forward requests to")
+	c.FlagSet.StringVar(&c.flags.devtools, "devtools", "/subtrace", "path to serve the chrome devtools bundle on")
 	c.flags.log = c.FlagSet.Bool("log", false, "if true, log trace events to stderr")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
 
@@ -132,7 +134,10 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		}
 	}
 
-	c.devtools = devtools.NewServer()
+	if c.flags.devtools != "" && !strings.HasPrefix(c.flags.devtools, "/") {
+		c.flags.devtools = "/" + c.flags.devtools
+	}
+	c.devtools = devtools.NewServer(c.flags.devtools)
 
 	c.initEventBase()
 
@@ -310,7 +315,7 @@ func (c *Command) getRemoteHost() string {
 }
 
 func (c *Command) ModifyRequest(req *http.Request) error {
-	if req.URL.Path == "/subtrace" {
+	if c.devtools.HijackPath != "" && req.URL.Path == c.devtools.HijackPath {
 		conn, brw, err := martian.NewContext(req).Session().Hijack()
 		if err != nil {
 			return fmt.Errorf("subtrace: failed to hijack devtools endpoint: %w", err)
