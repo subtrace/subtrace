@@ -66,10 +66,15 @@ func InstallFilter(syscalls []int) (int, error) {
 	// We're not interested in this syscall. Let the kernel handle it.
 	builder.AddStmt(bpf.Ret|bpf.K, uint32(SECCOMP_RET_ALLOW))
 
-	instrs, err := builder.Instructions()
-	if err != nil {
+	var instrs []linux.BPFInstruction
+	if arr, err := builder.Instructions(); err != nil {
 		return 0, fmt.Errorf("build: %w", err)
+	} else {
+		for _, ins := range arr {
+			instrs = append(instrs, linux.BPFInstruction(ins))
+		}
 	}
+
 	prog := &linux.SockFprog{
 		Len:    uint16(len(instrs)),
 		Filter: &instrs[0],
