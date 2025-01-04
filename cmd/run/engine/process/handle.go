@@ -71,6 +71,13 @@ func (p *Process) resolveDirfd(dirfd int) (string, syscall.Errno, error) {
 	if errno != 0 {
 		return "", errno, nil
 	}
+	defer func() {
+		if fd.ClosingIncRef() {
+			defer fd.DecRef()
+			fd.Lock()
+			unix.Close(fd.FD())
+		}
+	}()
 	defer fd.DecRef()
 
 	path, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", fd.FD()))
