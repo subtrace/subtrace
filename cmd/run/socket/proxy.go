@@ -602,6 +602,8 @@ func (h *hijacker) RoundTrip(req *http.Request) (*http.Response, error) {
 	parser.UseRequest(req)
 
 	tr := &http.Transport{
+		DisableKeepAlives: true,
+
 		DialContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
 			return h.conn, nil
 		},
