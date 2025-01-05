@@ -37,6 +37,12 @@ type proxy struct {
 	isOutgoing    bool
 	tlsServerName *string
 
+	// skipCloseTCP denotes whether the underlying process and external TCPConn
+	// should be closed. Both (*Socket).Close() and (*proxy).start() race to
+	// change this from false to true with a CAS. Whoever loses the CAS will
+	// close the two TCP connections.
+	skipCloseTCP atomic.Bool
+
 	tmpl *event.Event
 }
 
@@ -127,6 +133,16 @@ func (p *proxy) start() {
 
 	if err := p.proxyOptimistic(cli, srv); err != nil {
 		slog.Error("failed to run tcp proxy", "proxy", p, "err", err)
+	}
+
+	if p.skipCloseTCP.CompareAndSwap(false, true) {
+		// The target program has still not called the close(2) syscall on its file
+		// descriptor. When it does, the (*Socket).Close() handler will close the
+		// two underlying TCP connections. See the equivalent CAS in socket.go for
+		// the process.Close() and external.Close() calls.
+	} else {
+		p.process.Close()
+		p.external.Close()
 	}
 }
 

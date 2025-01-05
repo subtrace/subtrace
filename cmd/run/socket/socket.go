@@ -857,11 +857,19 @@ func (s *Socket) Close() syscall.Errno {
 		}
 
 	case StatusConnected:
-		if err := prev.connected.proxy.process.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			errs = append(errs, fmt.Errorf("close process conn: %w", err))
-		}
-		if err := prev.connected.proxy.external.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			errs = append(errs, fmt.Errorf("close external conn: %w", err))
+		if prev.connected.proxy.skipCloseTCP.CompareAndSwap(false, true) {
+			// We can't close the two underlying TCP connections yet because the
+			// proxy might still have some unflushed bytes in a buffer somewhere. The
+			// connections will be closed when the (*proxy).start() goroutine ends.
+			// See the equivalent CAS in proxy.go for the process.Close() and
+			// external.Close() calls.
+		} else {
+			if err := prev.connected.proxy.process.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				errs = append(errs, fmt.Errorf("close process conn: %w", err))
+			}
+			if err := prev.connected.proxy.external.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				errs = append(errs, fmt.Errorf("close external conn: %w", err))
+			}
 		}
 
 	case StatusConnecting:
