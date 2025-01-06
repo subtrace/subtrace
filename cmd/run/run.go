@@ -23,6 +23,8 @@ import (
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"golang.org/x/sys/unix"
+	"gopkg.in/yaml.v3"
+	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/run/engine"
 	"subtrace.dev/cmd/run/engine/process"
 	"subtrace.dev/cmd/run/engine/seccomp"
@@ -45,7 +47,10 @@ type Command struct {
 		log      *bool
 		pprof    string
 		devtools string
+		config   string
 	}
+
+	config *config.Config
 
 	ffcli.Command
 }
@@ -60,6 +65,7 @@ func NewCommand() *ffcli.Command {
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.flags.log = c.FlagSet.Bool("log", false, "log trace events to stderr")
 	c.FlagSet.Int64Var(&tracer.PayloadLimitBytes, "payload-limit", 4096, "payload size limit in bytes after which request/response body will be truncated")
+	c.FlagSet.StringVar(&c.flags.config, "config", "", "configuration file path")
 	c.FlagSet.StringVar(&c.flags.devtools, "devtools", "", "path to serve the chrome devtools bundle on")
 	c.FlagSet.BoolVar(&tls.Enabled, "tls", true, "intercept outgoing TLS requests")
 	c.FlagSet.StringVar(&c.flags.pprof, "pprof", "", "write pprof CPU profile to file")
@@ -115,6 +121,14 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		c.FlagSet.SetOutput(os.Stdout)
 		c.FlagSet.Usage()
 		return nil
+	}
+
+	if c.flags.config != "" {
+		if config, err := config.New(c.flags.config); err != nil {
+			return fmt.Errorf("new config: %w", err)
+		} else {
+			c.config = config
+		}
 	}
 
 	slog.Debug("starting tracer", "parent", os.Getenv("_SUBTRACE_CHILD") == "", "release", version.Release, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
@@ -340,12 +354,12 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	}
 	devtools := devtools.NewServer(c.flags.devtools)
 
-	root, err := process.New(devtools, pid)
+	root, err := process.New(devtools, pid, c.config)
 	if err != nil {
 		return 0, fmt.Errorf("new process: %w", err)
 	}
 
-	eng := engine.New(sec, devtools, root)
+	eng := engine.New(sec, devtools, root, c.config)
 	go eng.Start()
 
 	var status unix.WaitStatus
@@ -527,4 +541,25 @@ func (c *Command) entrypointChild(ctx context.Context, args []string) error {
 		return fmt.Errorf("execve: %w", err)
 	}
 	panic("unreachable")
+}
+
+func (c *Command) populateConfig() error {
+	if c.flags.config == "" {
+		return nil
+	}
+	b, err := os.ReadFile(c.flags.config)
+	if err != nil {
+		return fmt.Errorf("read config file: %w", err)
+	}
+
+	if err = yaml.Unmarshal(b, &c.config); err != nil {
+		return fmt.Errorf("parse config file: %w", err)
+	}
+	slog.Debug(fmt.Sprintf("parsed config file, found %d rules", len(c.config.Rules)))
+
+	if err := c.config.Validate(); err != nil {
+		return fmt.Errorf("validate config file: %w", err)
+	}
+
+	return nil
 }

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/run/engine/process"
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/syscalls"
@@ -34,9 +35,11 @@ type Engine struct {
 	threads   map[int]*process.Process
 	running   chan struct{}
 	inPanic   atomic.Bool
+
+	config *config.Config
 }
 
-func New(seccomp *seccomp.Listener, devtools *devtools.Server, root *process.Process) *Engine {
+func New(seccomp *seccomp.Listener, devtools *devtools.Server, root *process.Process, config *config.Config) *Engine {
 	en := &Engine{
 		seccomp:  seccomp,
 		devtools: devtools,
@@ -44,6 +47,8 @@ func New(seccomp *seccomp.Listener, devtools *devtools.Server, root *process.Pro
 		processes: map[int]*process.Process{root.PID: root},
 		threads:   map[int]*process.Process{},
 		running:   make(chan struct{}),
+
+		config: config,
 	}
 	go en.waitProcess(root)
 	return en
@@ -61,7 +66,7 @@ func (eng *Engine) ensureProcessLocked(pid int) *process.Process {
 			return leader
 		}
 
-		eng.processes[pid], err = process.New(eng.devtools, pid)
+		eng.processes[pid], err = process.New(eng.devtools, pid, eng.config)
 		if err != nil {
 			panic(fmt.Errorf("new process: %w", err))
 		}
