@@ -279,7 +279,7 @@ func (p *Process) handleSocket(n *seccomp.Notif, domain, typ, protocol int) erro
 		return n.Skip()
 	}
 
-	sock, err := socket.NewSocket(p.devtools, event.NewFromTemplate(p.getEventTemplate()), domain, typ)
+	sock, err := socket.NewSocket(p.devtools, event.NewFromTemplate(p.getEventTemplate()), domain, typ, p.config)
 	if err != nil {
 		return fmt.Errorf("create new socket: %w", err)
 	}

@@ -17,6 +17,7 @@ import (
 	"syscall"
 
 	"golang.org/x/sys/unix"
+	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/socket"
@@ -36,10 +37,12 @@ type Process struct {
 	links   map[string]string
 
 	tmpl atomic.Pointer[event.Event]
+
+	config *config.Config
 }
 
 // New creates a new process with the given PID.
-func New(devtools *devtools.Server, pid int) (*Process, error) {
+func New(devtools *devtools.Server, pid int, config *config.Config) (*Process, error) {
 	ret, _, errno := unix.Syscall(unix.SYS_PIDFD_OPEN, uintptr(pid), 0, 0)
 	if errno != 0 {
 		return nil, fmt.Errorf("pidfd_open %d: %w", pid, errno)
@@ -56,6 +59,8 @@ func New(devtools *devtools.Server, pid int) (*Process, error) {
 		pidfd:   pidfd,
 		sockets: make(map[int]*socket.Socket),
 		links:   make(map[string]string),
+
+		config: config,
 	}, nil
 }
 

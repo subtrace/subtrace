@@ -21,6 +21,7 @@ import (
 	"github.com/google/martian/v3"
 	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
+	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/devtools"
 	"subtrace.dev/event"
@@ -44,11 +45,14 @@ type proxy struct {
 	skipCloseTCP atomic.Bool
 
 	tmpl *event.Event
+
+	config *config.Config
 }
 
-func newProxy(devtools *devtools.Server, tmpl *event.Event, isOutgoing bool) *proxy {
+func newProxy(devtools *devtools.Server, tmpl *event.Event, isOutgoing bool, config *config.Config) *proxy {
 	return &proxy{
 		devtools:   devtools,
+		config:     config,
 		begin:      time.Now(),
 		isOutgoing: isOutgoing,
 		tmpl:       tmpl,
@@ -347,6 +351,16 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
+			if p.config != nil {
+				begin := time.Now()
+				rule, found := p.config.FindMatchingRule(req, resp)
+				slog.Debug("ran config rules on request", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
+
+				if found && rule.Then == "exclude" {
+					return
+				}
+			}
+
 			parser.UseResponse(resp)
 			go func() {
 				defer resp.Body.Close()
@@ -637,6 +651,16 @@ func (h *hijacker) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := tr.RoundTrip(req)
 	if err != nil {
 		return resp, err
+	}
+
+	if h.proxy.config != nil {
+		begin := time.Now()
+		rule, found := h.proxy.config.FindMatchingRule(req, resp)
+		slog.Debug("ran config rules on request", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
+
+		if found && rule.Then == "exclude" {
+			return resp, err
+		}
 	}
 
 	parser.UseResponse(resp)

@@ -14,16 +14,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
-	"github.com/google/cel-go/cel"
 	"github.com/google/martian/v3"
 	"github.com/google/uuid"
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
-	"gopkg.in/yaml.v3"
+	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/devtools"
 	"subtrace.dev/event"
@@ -43,7 +41,7 @@ type Command struct {
 		log      *bool
 	}
 
-	config   config
+	config   *config.Config
 	devtools *devtools.Server
 
 	ffcli.Command
@@ -117,8 +115,12 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		}
 	}()
 
-	if err := c.populateConfig(); err != nil {
-		return err
+	if c.flags.config != "" {
+		if config, err := config.New(c.flags.config); err != nil {
+			return fmt.Errorf("new config: %w", err)
+		} else {
+			c.config = config
+		}
 	}
 
 	if c.flags.devtools != "" && !strings.HasPrefix(c.flags.devtools, "/") {
@@ -177,27 +179,6 @@ func (c *Command) initEventBase() {
 			}
 		}()
 	}
-}
-
-func (c *Command) populateConfig() error {
-	if c.flags.config == "" {
-		return nil
-	}
-	b, err := os.ReadFile(c.flags.config)
-	if err != nil {
-		return fmt.Errorf("read config file: %w", err)
-	}
-
-	if err = yaml.Unmarshal(b, &c.config); err != nil {
-		return fmt.Errorf("parse config file: %w", err)
-	}
-	slog.Debug(fmt.Sprintf("parsed config file, found %d rules", len(c.config.Rules)))
-
-	if err := c.config.validate(); err != nil {
-		return fmt.Errorf("validate config file: %w", err)
-	}
-
-	return nil
 }
 
 func (c *Command) start(ctx context.Context) error {
@@ -277,12 +258,14 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
-	begin := time.Now()
-	rule, found := c.config.findMatchingRule(req, resp)
-	slog.Debug("ran config rules on request", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
+	if c.config != nil {
+		begin := time.Now()
+		rule, found := c.config.FindMatchingRule(req, resp)
+		slog.Debug("ran config rules on request", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
 
-	if found && rule.Then == "exclude" {
-		return resp, nil
+		if found && rule.Then == "exclude" {
+			return resp, nil
+		}
 	}
 
 	parser.UseResponse(resp)
@@ -293,97 +276,4 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 	}()
 
 	return resp, nil
-}
-
-func (config *config) findMatchingRule(req *http.Request, resp *http.Response) (rule *rule, found bool) {
-	for _, rule := range config.Rules {
-		matches, err := rule.matches(req, resp)
-		// Ignore errors here and skip this rule because we want to be robust when tracing requests
-		if err != nil {
-			continue
-		}
-
-		if matches {
-			return &rule, true
-		}
-	}
-
-	return nil, false
-}
-
-func (c *config) validate() error {
-	env, err := cel.NewEnv(
-		cel.Variable("request", cel.DynType),
-		cel.Variable("response", cel.DynType),
-	)
-	if err != nil {
-		return fmt.Errorf("create cel env: %w", err)
-	}
-
-	for index, rule := range c.Rules {
-		switch rule.Then {
-		case "include":
-		case "exclude":
-		default:
-			return fmt.Errorf("config: invalid action in rule: %q. Expected either 'include' or 'exclude'", rule.Then)
-		}
-
-		ast, iss := env.Compile(rule.If)
-		if err = iss.Err(); err != nil {
-			return fmt.Errorf("compile program: %w", err)
-		}
-		if !reflect.DeepEqual(ast.OutputType(), cel.BoolType) {
-			return fmt.Errorf("typecheck program: Got %v, wanted %v result type", ast.OutputType(), cel.BoolType)
-		}
-		program, err := env.Program(ast)
-		if err != nil {
-			return fmt.Errorf("create program instance: %w", err)
-		}
-		c.Rules[index].program = program
-	}
-
-	// Test config on a dummmy request and response as a sanity check
-	for _, rule := range c.Rules {
-		if _, err := rule.matches(&http.Request{URL: &url.URL{}}, &http.Response{}); err != nil {
-			return fmt.Errorf("config test: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (r *rule) matches(req *http.Request, resp *http.Response) (bool, error) {
-	celReq := map[string]any{
-		"method": req.Method,
-		"url":    req.URL.String(),
-	}
-	celResp := map[string]any{
-		"status": resp.StatusCode,
-	}
-
-	out, _, err := r.program.Eval(map[string]any{
-		"request":  celReq,
-		"response": celResp,
-	})
-	if err != nil {
-		return false, fmt.Errorf("evaluting program on rule %q: %w", r.If, err)
-	}
-
-	match, ok := out.Value().(bool)
-	if !ok {
-		return false, fmt.Errorf("evaluting program on rule %q: expected bool but got %T", r.If, out.Value())
-	}
-
-	return match, nil
-}
-
-type rule struct {
-	If   string `yaml:"if"`
-	Then string `yaml:"then"`
-
-	program cel.Program
-}
-
-type config struct {
-	Rules []rule `yaml:"rules"`
 }
