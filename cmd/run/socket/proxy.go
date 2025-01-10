@@ -301,8 +301,11 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 		h := p.newHijacker(srv)
 
 		mp := martian.NewProxy()
+		defer mp.Close()
+
 		mp.SetRequestModifier(h)
 		mp.SetRoundTripper(h)
+
 		if err := mp.Serve(lis); err != nil {
 			return fmt.Errorf("martian: serve: %w", err)
 		}
