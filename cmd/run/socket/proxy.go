@@ -600,21 +600,29 @@ func (l *simpleListener) Addr() net.Addr {
 type hijacker struct {
 	proxy *proxy
 	begin time.Time
-	conn  net.Conn
+	srv   net.Conn
 }
 
 var _ http.RoundTripper = new(hijacker)
 
-func (p *proxy) newHijacker(conn net.Conn) *hijacker {
+func (p *proxy) newHijacker(srv net.Conn) *hijacker {
 	return &hijacker{
 		proxy: p,
 		begin: time.Now(),
-		conn:  conn,
+		srv:   srv,
 	}
 }
 
 func (h *hijacker) ModifyRequest(req *http.Request) error {
 	if req.URL.Path == h.proxy.devtools.HijackPath {
+		// We need to serve the devtools bundle by hijacking the client-side
+		// connection. As a result, this proxy will no longer be used for regular
+		// HTTP requests (i.e. non-devtools paths). Some programs such as Python's
+		// SimpleHTTPServer are single-threaded, which means they will be blocked
+		// until the last open connection finishes. As a result, we must first
+		// close the server-side connection before starting the Martian hijack.
+		h.srv.Close()
+
 		conn, brw, err := martian.NewContext(req).Session().Hijack()
 		if err != nil {
 			return fmt.Errorf("subtrace: failed to hijack devtools endpoint: %w", err)
@@ -635,10 +643,10 @@ func (h *hijacker) RoundTrip(req *http.Request) (*http.Response, error) {
 		DisableKeepAlives: true,
 
 		DialContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
-			return h.conn, nil
+			return h.srv, nil
 		},
 		Dial: func(network string, addr string) (net.Conn, error) {
-			return h.conn, nil
+			return h.srv, nil
 		},
 		DialTLSContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
 			return nil, fmt.Errorf("invalid use of DialTLSContext in simpleRoundTripper")
