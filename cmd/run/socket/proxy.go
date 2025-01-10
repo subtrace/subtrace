@@ -370,7 +370,7 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				io.Copy(io.Discard, resp.Body)
 			}()
 
-			if err := parser.Finish(nil); err != nil {
+			if err := parser.Finish(p.devtools); err != nil {
 				slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
 			}
 
