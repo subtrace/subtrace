@@ -49,7 +49,7 @@ func bundleOnce() {
 	once.Do(func() {
 		f, err := bundle.Open("bundle/devtools.html.gz")
 		if err != nil {
-			html = fallback("This build of subtrace was compiler without Chrome DevTools support.")
+			html = fallback("This build of subtrace was compiled without Chrome DevTools support.")
 			return
 		}
 		defer f.Close()
