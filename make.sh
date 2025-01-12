@@ -24,6 +24,7 @@ cmd:proto() {
   protoc \
     event/event.proto \
     tunnel/tunnel.proto \
+    pubsub/pubsub.proto \
     --go_out=. --go_opt=paths=source_relative
 }
 
