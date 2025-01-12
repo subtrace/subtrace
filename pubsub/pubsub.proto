@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package subtrace.pubsub;
+
+option go_package = "subtrace.dev/pubsub";
+
+// POST /api/JoinPublisher
+message JoinPublisher {
+  message Request {
+  }
+
+  message Response {
+    optional string error = 1000;
+    string websocket_url = 1;
+  }
+}
+
+// POST /api/JoinSubscriber
+message JoinSubscriber {
+  message Request {
+    string namespace_id = 1;
+  }
+
+  message Response {
+    optional string error = 1000;
+    string websocket_url = 1;
+  }
+}
+
+message Event {
+  message V1 {
+    map<string, string> tags = 1;
+    bytes har_entry_json = 2;
+  }
+
+  oneof concrete {
+    V1 concrete_v1 = 1;
+  }
+}
+
+message Message {
+  message V1 {
+    oneof underlying {
+      Event event = 1;
+    }
+  }
+
+  oneof concrete {
+    V1 concrete_v1 = 1;
+  }
+}
