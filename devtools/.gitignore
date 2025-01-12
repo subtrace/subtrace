@@ -1,0 +1,10 @@
+.gclient
+.gcs_entries
+.gclient_previous_sync_commits
+.gclient_entries
+
+depot_tools/
+devtools-frontend/
+.cipd/
+
+devtools.html.gz
