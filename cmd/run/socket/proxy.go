@@ -21,15 +21,15 @@ import (
 	"github.com/google/martian/v3"
 	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
-	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/run/tls"
-	"subtrace.dev/devtools"
 	"subtrace.dev/event"
+	"subtrace.dev/global"
 	"subtrace.dev/tracer"
 )
 
 type proxy struct {
-	devtools *devtools.Server
+	global *global.Global
+	tmpl   *event.Event
 
 	process  *net.TCPConn
 	external *net.TCPConn
@@ -43,19 +43,15 @@ type proxy struct {
 	// change this from false to true with a CAS. Whoever loses the CAS will
 	// close the two TCP connections.
 	skipCloseTCP atomic.Bool
-
-	tmpl *event.Event
-
-	config *config.Config
 }
 
-func newProxy(devtools *devtools.Server, tmpl *event.Event, isOutgoing bool, config *config.Config) *proxy {
+func newProxy(global *global.Global, tmpl *event.Event, isOutgoing bool) *proxy {
 	return &proxy{
-		devtools:   devtools,
-		config:     config,
+		global: global,
+		tmpl:   tmpl,
+
 		begin:      time.Now(),
 		isOutgoing: isOutgoing,
-		tmpl:       tmpl,
 	}
 }
 
@@ -294,7 +290,7 @@ func (p *proxy) discardMulti(r ...io.Reader) error {
 
 // proxyHTTP proxies an HTTP connection between the client and server.
 func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
-	if !p.isOutgoing && p.devtools != nil && p.devtools.HijackPath != "" {
+	if !p.isOutgoing && p.global.Devtools != nil && p.global.Devtools.HijackPath != "" {
 		lis := newSimpleListener(cli)
 		defer lis.Close()
 
@@ -335,7 +331,7 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
-			parser := tracer.NewParser(eventID)
+			parser := tracer.NewParser(p.global, eventID)
 
 			parser.UseRequest(req)
 			go func() {
@@ -354,9 +350,9 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
-			if p.config != nil {
+			if p.global.Config != nil {
 				begin := time.Now()
-				rule, found := p.config.FindMatchingRule(req, resp)
+				rule, found := p.global.Config.FindMatchingRule(req, resp)
 				slog.Debug("ran config rules on request", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
 
 				if found && rule.Then == "exclude" {
@@ -370,7 +366,7 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				io.Copy(io.Discard, resp.Body)
 			}()
 
-			if err := parser.Finish(p.devtools); err != nil {
+			if err := parser.Finish(); err != nil {
 				slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
 			}
 
@@ -617,7 +613,7 @@ func (p *proxy) newHijacker(srv net.Conn) *hijacker {
 }
 
 func (h *hijacker) ModifyRequest(req *http.Request) error {
-	if req.URL.Path == h.proxy.devtools.HijackPath {
+	if req.URL.Path == h.proxy.global.Devtools.HijackPath {
 		// We need to serve the devtools bundle by hijacking the client-side
 		// connection. As a result, this proxy will no longer be used for regular
 		// HTTP requests (i.e. non-devtools paths). Some programs such as Python's
@@ -630,7 +626,7 @@ func (h *hijacker) ModifyRequest(req *http.Request) error {
 		if err != nil {
 			return fmt.Errorf("subtrace: failed to hijack devtools endpoint: %w", err)
 		}
-		h.proxy.devtools.HandleHijack(req, conn, brw)
+		h.proxy.global.Devtools.HandleHijack(req, conn, brw)
 	}
 
 	return nil
@@ -639,7 +635,7 @@ func (h *hijacker) ModifyRequest(req *http.Request) error {
 func (h *hijacker) RoundTrip(req *http.Request) (*http.Response, error) {
 	eventID := uuid.New()
 
-	parser := tracer.NewParser(eventID)
+	parser := tracer.NewParser(h.proxy.global, eventID)
 	parser.UseRequest(req)
 
 	tr := &http.Transport{
@@ -664,9 +660,9 @@ func (h *hijacker) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
-	if h.proxy.config != nil {
+	if h.proxy.global.Config != nil {
 		begin := time.Now()
-		rule, found := h.proxy.config.FindMatchingRule(req, resp)
+		rule, found := h.proxy.global.Config.FindMatchingRule(req, resp)
 		slog.Debug("ran config rules on request", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
 
 		if found && rule.Then == "exclude" {
@@ -676,7 +672,7 @@ func (h *hijacker) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	parser.UseResponse(resp)
 	go func() {
-		if err := parser.Finish(h.proxy.devtools); err != nil {
+		if err := parser.Finish(); err != nil {
 			slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
 		}
 	}()

@@ -9,8 +9,6 @@ import (
 	"github.com/google/uuid"
 )
 
-var Base = new(Event)
-
 type Event struct {
 	mu   sync.RWMutex
 	keys []string
@@ -28,12 +26,10 @@ func New() *Event {
 	}
 }
 
-func NewFromTemplate(tmpl *Event) *Event {
-	ev := New()
-	if tmpl != nil {
-		ev.CopyFrom(tmpl)
-	}
-	return ev
+func (src *Event) Copy() *Event {
+	dst := New()
+	dst.CopyFrom(src)
+	return dst
 }
 
 // CopyFrom copies all tags from src except "time" and "event_id". If a key

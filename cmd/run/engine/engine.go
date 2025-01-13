@@ -18,125 +18,120 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
-	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/run/engine/process"
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/syscalls"
 	"subtrace.dev/cmd/version"
-	"subtrace.dev/devtools"
+	"subtrace.dev/global"
 )
 
 type Engine struct {
-	seccomp  *seccomp.Listener
-	devtools *devtools.Server
+	global  *global.Global
+	seccomp *seccomp.Listener
 
 	mu        sync.RWMutex
 	processes map[int]*process.Process
 	threads   map[int]*process.Process
 	running   chan struct{}
 	inPanic   atomic.Bool
-
-	config *config.Config
 }
 
-func New(seccomp *seccomp.Listener, devtools *devtools.Server, root *process.Process, config *config.Config) *Engine {
-	en := &Engine{
-		seccomp:  seccomp,
-		devtools: devtools,
+func New(global *global.Global, seccomp *seccomp.Listener, root *process.Process) *Engine {
+	e := &Engine{
+		global:  global,
+		seccomp: seccomp,
 
 		processes: map[int]*process.Process{root.PID: root},
 		threads:   map[int]*process.Process{},
 		running:   make(chan struct{}),
-
-		config: config,
 	}
-	go en.waitProcess(root)
-	return en
+	go e.waitProcess(root)
+	return e
 }
 
-func (eng *Engine) ensureProcessLocked(pid int) *process.Process {
-	if _, ok := eng.processes[pid]; !ok {
+func (e *Engine) ensureProcessLocked(pid int) *process.Process {
+	if _, ok := e.processes[pid]; !ok {
 		tgid, err := getThreadGroupID(pid)
 		if err != nil {
 			panic(fmt.Errorf("read process: %w", err))
 		}
 		if tgid != pid {
-			leader := eng.ensureProcessLocked(tgid)
-			eng.threads[pid] = leader
+			leader := e.ensureProcessLocked(tgid)
+			e.threads[pid] = leader
 			return leader
 		}
 
-		eng.processes[pid], err = process.New(eng.devtools, pid, eng.config)
+		e.processes[pid], err = process.New(e.global, pid)
 		if err != nil {
 			panic(fmt.Errorf("new process: %w", err))
 		}
-		go eng.waitProcess(eng.processes[pid])
+		go e.waitProcess(e.processes[pid])
 	}
 
-	return eng.processes[pid]
+	return e.processes[pid]
 }
 
-func (eng *Engine) waitProcess(p *process.Process) {
+func (e *Engine) waitProcess(p *process.Process) {
 	if err := p.Wait(); err != nil {
 		slog.Error("failed to wait for process", "proc", p, "err", err)
 		return
 	}
 
-	eng.mu.Lock()
-	defer eng.mu.Unlock()
-	delete(eng.processes, p.PID)
-	if len(eng.processes) == 0 {
-		if err := eng.closeLocked(); err != nil {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	delete(e.processes, p.PID)
+	if len(e.processes) == 0 {
+		if err := e.closeLocked(); err != nil {
 			slog.Error("failed to close engine after all processes exited", "err", err)
 		}
 		slog.Debug("closed engine after all processes exited")
 	}
 }
 
-func (eng *Engine) getProcessFast(pid int) *process.Process {
-	eng.mu.RLock()
-	defer eng.mu.RUnlock()
-	if p, ok := eng.processes[pid]; ok {
+func (e *Engine) getProcessFast(pid int) *process.Process {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if p, ok := e.processes[pid]; ok {
 		return p
 	}
-	if p, ok := eng.threads[pid]; ok {
+	if p, ok := e.threads[pid]; ok {
 		return p
 	}
 	return nil
 }
 
-func (eng *Engine) getProcess(pid int) *process.Process {
-	if p := eng.getProcessFast(pid); p != nil {
+func (e *Engine) getProcess(pid int) *process.Process {
+	if p := e.getProcessFast(pid); p != nil {
 		return p
 	}
-	eng.mu.Lock()
-	defer eng.mu.Unlock()
-	return eng.ensureProcessLocked(pid)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.ensureProcessLocked(pid)
 }
 
-func (eng *Engine) countRunning() int {
-	eng.mu.RLock()
-	defer eng.mu.RUnlock()
-	return len(eng.processes)
+func (e *Engine) countRunning() int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return len(e.processes)
 }
 
-func (eng *Engine) closeLocked() error {
+func (e *Engine) closeLocked() error {
 	select {
-	case <-eng.running:
+	case <-e.running:
 		return nil
 	default:
 	}
-	defer close(eng.running)
-	if err := eng.seccomp.Close(); err != nil {
+	defer close(e.running)
+	if err := e.seccomp.Close(); err != nil {
 		return fmt.Errorf("close seccomp: %w", err)
 	}
 	return nil
 }
 
-func (eng *Engine) Close() error {
-	eng.mu.Lock()
-	defer eng.mu.Unlock()
-	return eng.closeLocked()
+func (e *Engine) Close() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.closeLocked()
 }
 
 func (e *Engine) Wait() {

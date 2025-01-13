@@ -20,14 +20,15 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/google/martian/v3/har"
 	"github.com/google/uuid"
-	"subtrace.dev/devtools"
-	"subtrace.dev/event"
+	"subtrace.dev/global"
 )
 
 var PayloadLimitBytes int64 = 4096 // bytes
 
 type Parser struct {
-	eventID  uuid.UUID
+	global  *global.Global
+	eventID uuid.UUID
+
 	wg       sync.WaitGroup
 	errs     chan error
 	begin    time.Time
@@ -36,11 +37,13 @@ type Parser struct {
 	response *har.Response
 }
 
-func NewParser(eventID uuid.UUID) *Parser {
+func NewParser(global *global.Global, eventID uuid.UUID) *Parser {
 	return &Parser{
+		global:  global,
 		eventID: eventID,
-		errs:    make(chan error, 2),
-		begin:   time.Now().UTC(),
+
+		errs:  make(chan error, 2),
+		begin: time.Now().UTC(),
 	}
 }
 
@@ -173,7 +176,7 @@ func (p *Parser) UseResponse(resp *http.Response) {
 	}()
 }
 
-func (p *Parser) Finish(devtools *devtools.Server) error {
+func (p *Parser) Finish() error {
 	p.wg.Wait()
 	for i := 0; i < 2; i++ {
 		if err := <-p.errs; err != nil {
@@ -197,11 +200,11 @@ func (p *Parser) Finish(devtools *devtools.Server) error {
 		return fmt.Errorf("encode json: %w", err)
 	}
 
-	if devtools != nil {
-		go devtools.Send(b)
+	if p.global.Devtools != nil {
+		go p.global.Devtools.Send(b)
 	}
 
-	ev := event.NewFromTemplate(event.Base)
+	ev := p.global.EventTemplate.Copy()
 	ev.Set("event_id", p.eventID.String())
 	ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(b))
 	DefaultManager.Insert(ev.String())
