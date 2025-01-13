@@ -1,7 +1,7 @@
 package global
 
 import (
-	"subtrace.dev/cmd/config"
+	"subtrace.dev/config"
 	"subtrace.dev/devtools"
 	"subtrace.dev/event"
 )

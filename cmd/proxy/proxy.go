@@ -21,8 +21,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
-	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/version"
+	"subtrace.dev/config"
 	"subtrace.dev/devtools"
 	"subtrace.dev/event"
 	"subtrace.dev/global"
@@ -114,7 +114,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		}
 	}()
 
-	c.global.Config = new(config.Config)
+	c.global.Config = config.New()
 	if c.flags.config != "" {
 		if err := c.global.Config.Load(c.flags.config); err != nil {
 			return fmt.Errorf("load config: %w", err)
