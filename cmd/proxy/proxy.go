@@ -25,14 +25,14 @@ import (
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/devtools"
 	"subtrace.dev/event"
+	"subtrace.dev/global"
 	"subtrace.dev/logging"
-	"subtrace.dev/tags/cloudtags"
-	"subtrace.dev/tags/gcptags"
-	"subtrace.dev/tags/kubetags"
+	"subtrace.dev/tags"
 	"subtrace.dev/tracer"
 )
 
 type Command struct {
+	ffcli.Command
 	flags struct {
 		config   string
 		listen   string
@@ -41,10 +41,7 @@ type Command struct {
 		log      *bool
 	}
 
-	config   *config.Config
-	devtools *devtools.Server
-
-	ffcli.Command
+	global *global.Global
 }
 
 func NewCommand() *ffcli.Command {
@@ -82,6 +79,8 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		return flag.ErrHelp
 	}
 
+	c.global = new(global.Global)
+
 	if c.flags.log == nil {
 		c.flags.log = new(bool)
 		if os.Getenv("SUBTRACE_TOKEN") == "" {
@@ -115,20 +114,23 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		}
 	}()
 
+	c.global.Config = new(config.Config)
 	if c.flags.config != "" {
-		if config, err := config.New(c.flags.config); err != nil {
-			return fmt.Errorf("new config: %w", err)
-		} else {
-			c.config = config
+		if err := c.global.Config.Load(c.flags.config); err != nil {
+			return fmt.Errorf("load config: %w", err)
 		}
 	}
 
 	if c.flags.devtools != "" && !strings.HasPrefix(c.flags.devtools, "/") {
 		c.flags.devtools = "/" + c.flags.devtools
 	}
-	c.devtools = devtools.NewServer(c.flags.devtools)
+	c.global.Devtools = devtools.NewServer(c.flags.devtools)
 
-	c.initEventBase()
+	c.global.EventTemplate = event.New()
+	for k, v := range c.global.Config.Tags {
+		c.global.EventTemplate.Set(k, v)
+	}
+	go tags.SetLocalTagsAsync(c.global.EventTemplate)
 
 	switch err := c.start(ctx); {
 	case err == nil:
@@ -140,50 +142,6 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		os.Exit(1)
 		return nil
 	}
-}
-
-func (c *Command) initEventBase() {
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = ""
-	}
-	event.Base.Set("hostname", hostname)
-
-	cloud := cloudtags.CloudUnknown
-	cloudBarrier := make(chan struct{})
-	go func() {
-		defer close(cloudBarrier)
-		if cloud = cloudtags.GuessCloudDMI(); cloud == cloudtags.CloudUnknown {
-			cloud = cloudtags.GuessCloudIMDS()
-		}
-	}()
-
-	go func() {
-		<-cloudBarrier
-		switch cloud {
-		case cloudtags.CloudGCP:
-			c := gcptags.New()
-			if project, err := c.Get("/computeMetadata/v1/project/project-id"); err == nil {
-				event.Base.Set("gcp_project", project)
-			}
-		}
-	}()
-
-	if partial, ok := kubetags.FetchLocal(); ok {
-		event.Base.CopyFrom(partial)
-		go func() {
-			<-cloudBarrier
-			switch cloud {
-			case cloudtags.CloudGCP:
-				event.Base.CopyFrom(kubetags.FetchGKE())
-			}
-		}()
-	}
-
-	for key, val := range c.config.Tags {
-		event.Base.Set(key, val)
-	}
-
 }
 
 func (c *Command) start(ctx context.Context) error {
@@ -222,13 +180,13 @@ func (c *Command) getRemoteHost() string {
 }
 
 func (c *Command) ModifyRequest(req *http.Request) error {
-	if c.devtools.HijackPath != "" && req.URL.Path == c.devtools.HijackPath {
+	if c.global.Devtools.HijackPath != "" && req.URL.Path == c.global.Devtools.HijackPath {
 		conn, brw, err := martian.NewContext(req).Session().Hijack()
 		if err != nil {
 			return fmt.Errorf("subtrace: failed to hijack devtools endpoint: %w", err)
 		}
 
-		c.devtools.HandleHijack(req, conn, brw)
+		c.global.Devtools.HandleHijack(req, conn, brw)
 		return nil
 	}
 
@@ -251,7 +209,7 @@ func (c *Command) ModifyRequest(req *http.Request) error {
 func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 	eventID := uuid.New()
 
-	parser := tracer.NewParser(eventID)
+	parser := tracer.NewParser(c.global, eventID)
 	parser.UseRequest(req)
 
 	tr := &http.Transport{
@@ -263,9 +221,9 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
-	if c.config != nil {
+	if c.global.Config != nil {
 		begin := time.Now()
-		rule, found := c.config.FindMatchingRule(req, resp)
+		rule, found := c.global.Config.FindMatchingRule(req, resp)
 		slog.Debug("ran config rules on request", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
 
 		if found && rule.Then == "exclude" {
@@ -275,7 +233,7 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	parser.UseResponse(resp)
 	go func() {
-		if err := parser.Finish(c.devtools); err != nil {
+		if err := parser.Finish(); err != nil {
 			slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
 		}
 	}()

@@ -23,7 +23,6 @@ import (
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"golang.org/x/sys/unix"
-	"gopkg.in/yaml.v3"
 	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/run/engine"
 	"subtrace.dev/cmd/run/engine/process"
@@ -35,14 +34,14 @@ import (
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/devtools"
 	"subtrace.dev/event"
+	"subtrace.dev/global"
 	"subtrace.dev/logging"
-	"subtrace.dev/tags/cloudtags"
-	"subtrace.dev/tags/gcptags"
-	"subtrace.dev/tags/kubetags"
+	"subtrace.dev/tags"
 	"subtrace.dev/tracer"
 )
 
 type Command struct {
+	ffcli.Command
 	flags struct {
 		log      *bool
 		pprof    string
@@ -50,9 +49,7 @@ type Command struct {
 		config   string
 	}
 
-	config *config.Config
-
-	ffcli.Command
+	global *global.Global
 }
 
 func NewCommand() *ffcli.Command {
@@ -121,14 +118,6 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		c.FlagSet.SetOutput(os.Stdout)
 		c.FlagSet.Usage()
 		return nil
-	}
-
-	if c.flags.config != "" {
-		if config, err := config.New(c.flags.config); err != nil {
-			return fmt.Errorf("new config: %w", err)
-		} else {
-			c.config = config
-		}
 	}
 
 	slog.Debug("starting tracer", "parent", os.Getenv("_SUBTRACE_CHILD") == "", "release", version.Release, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
@@ -282,6 +271,8 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		return 0, fmt.Errorf("check kernel version: %w", err)
 	}
 
+	c.global = new(global.Global)
+
 	if c.flags.pprof != "" {
 		f, err := os.Create(c.flags.pprof)
 		if err != nil {
@@ -293,6 +284,13 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 			return 0, fmt.Errorf("start cpu profile: %w", err)
 		}
 		defer pprof.StopCPUProfile()
+	}
+
+	c.global.Config = new(config.Config)
+	if c.flags.config != "" {
+		if err := c.global.Config.Load(c.flags.config); err != nil {
+			return 1, fmt.Errorf("load config: %w", err)
+		}
 	}
 
 	go c.watchSignals()
@@ -336,30 +334,33 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		}
 	}
 
-	c.initEventBase()
-
 	pid, sec, err := c.forkChild()
 	if errors.Is(err, errMissingSysPtrace) {
 		fmt.Fprintf(os.Stderr, "subtrace: error: %v: was subtrace started with the SYS_PTRACE capability?\n", err)
 		return 1, nil
 	} else if err != nil {
 		return 0, fmt.Errorf("exec child: %w", err)
-	}
-	if sec == nil {
+	} else if sec == nil {
 		return 127, nil
 	}
 
 	if c.flags.devtools != "" && !strings.HasPrefix(c.flags.devtools, "/") {
 		c.flags.devtools = "/" + c.flags.devtools
 	}
-	devtools := devtools.NewServer(c.flags.devtools)
+	c.global.Devtools = devtools.NewServer(c.flags.devtools)
 
-	root, err := process.New(devtools, pid, c.config)
+	c.global.EventTemplate = event.New()
+	for k, v := range c.global.Config.Tags {
+		c.global.EventTemplate.Set(k, v)
+	}
+	go tags.SetLocalTagsAsync(c.global.EventTemplate)
+
+	root, err := process.New(c.global, pid)
 	if err != nil {
 		return 0, fmt.Errorf("new process: %w", err)
 	}
 
-	eng := engine.New(sec, devtools, root, c.config)
+	eng := engine.New(c.global, sec, root)
 	go eng.Start()
 
 	var status unix.WaitStatus
@@ -390,49 +391,6 @@ func (c *Command) watchSignals() {
 			code = "SIGQUIT"
 		}
 		slog.Debug("received signal", "code", code)
-	}
-}
-
-func (c *Command) initEventBase() {
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = ""
-	}
-	event.Base.Set("hostname", hostname)
-
-	cloud := cloudtags.CloudUnknown
-	cloudBarrier := make(chan struct{})
-	go func() {
-		defer close(cloudBarrier)
-		if cloud = cloudtags.GuessCloudDMI(); cloud == cloudtags.CloudUnknown {
-			cloud = cloudtags.GuessCloudIMDS()
-		}
-	}()
-
-	go func() {
-		<-cloudBarrier
-		switch cloud {
-		case cloudtags.CloudGCP:
-			c := gcptags.New()
-			if project, err := c.Get("/computeMetadata/v1/project/project-id"); err == nil {
-				event.Base.Set("gcp_project", project)
-			}
-		}
-	}()
-
-	if partial, ok := kubetags.FetchLocal(); ok {
-		event.Base.CopyFrom(partial)
-		go func() {
-			<-cloudBarrier
-			switch cloud {
-			case cloudtags.CloudGCP:
-				event.Base.CopyFrom(kubetags.FetchGKE())
-			}
-		}()
-	}
-
-	for key, val := range c.config.Tags {
-		event.Base.Set(key, val)
 	}
 }
 
@@ -545,25 +503,4 @@ func (c *Command) entrypointChild(ctx context.Context, args []string) error {
 		return fmt.Errorf("execve: %w", err)
 	}
 	panic("unreachable")
-}
-
-func (c *Command) populateConfig() error {
-	if c.flags.config == "" {
-		return nil
-	}
-	b, err := os.ReadFile(c.flags.config)
-	if err != nil {
-		return fmt.Errorf("read config file: %w", err)
-	}
-
-	if err = yaml.Unmarshal(b, &c.config); err != nil {
-		return fmt.Errorf("parse config file: %w", err)
-	}
-	slog.Debug(fmt.Sprintf("parsed config file, found %d rules", len(c.config.Rules)))
-
-	if err := c.config.Validate(); err != nil {
-		return fmt.Errorf("validate config file: %w", err)
-	}
-
-	return nil
 }

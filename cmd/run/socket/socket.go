@@ -16,10 +16,9 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
-	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/run/fd"
-	"subtrace.dev/devtools"
 	"subtrace.dev/event"
+	"subtrace.dev/global"
 )
 
 const (
@@ -143,18 +142,16 @@ func (imm *immutable) getRemotePeerAddr() (netip.AddrPort, syscall.Errno, error)
 }
 
 type Socket struct {
+	global *global.Global
+	tmpl   *event.Event
+
 	Domain int
 	FD     *fd.FD
 
 	current atomic.Pointer[immutable]
-
-	devtools *devtools.Server
-	tmpl     *event.Event
-
-	config *config.Config
 }
 
-func NewSocket(devtools *devtools.Server, tmpl *event.Event, domain int, typ int, config *config.Config) (*Socket, error) {
+func NewSocket(global *global.Global, tmpl *event.Event, domain int, typ int) (*Socket, error) {
 	if domain != unix.AF_INET && domain != unix.AF_INET6 {
 		return nil, fmt.Errorf("unsupported domain 0x%x", domain)
 	}
@@ -172,7 +169,7 @@ func NewSocket(devtools *devtools.Server, tmpl *event.Event, domain int, typ int
 	fd := fd.NewFD(ret)
 	defer fd.DecRef()
 
-	s := &Socket{Domain: domain, FD: fd, devtools: devtools, tmpl: tmpl, config: config}
+	s := &Socket{global: global, tmpl: tmpl, Domain: domain, FD: fd}
 	s.current.Store(&immutable{status: StatusPassive})
 	slog.Debug("created socket", "sock", s)
 	return s, nil
@@ -241,7 +238,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 		return unix.EBADF, nil
 	}
 
-	proxy := newProxy(s.devtools, s.tmpl, true, s.config)
+	proxy := newProxy(s.global, s.tmpl, true)
 
 	isBlocking, err := s.isBlocking()
 	if err != nil {
@@ -715,7 +712,7 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 			external, err := lis.Accept()
 			switch {
 			case err == nil:
-				p := newProxy(s.devtools, s.tmpl, false, s.config)
+				p := newProxy(s.global, s.tmpl, false)
 				p.external = external.(*net.TCPConn)
 				buffer <- p
 			case errors.Is(err, net.ErrClosed):
@@ -809,8 +806,7 @@ func (s *Socket) Accept(flags int) (*Socket, syscall.Errno, error) {
 	}
 	slog.Debug("accepter dequeued accepted connection", "sock", s, "addr", addr)
 
-	child := &Socket{Domain: s.Domain, devtools: s.devtools, tmpl: s.tmpl, config: s.config}
-	child.FD = fd.NewFD(ret)
+	child := &Socket{global: s.global, tmpl: s.tmpl, Domain: s.Domain, FD: fd.NewFD(ret)}
 	defer child.FD.DecRef()
 
 	state := &immutable{status: StatusConnected}

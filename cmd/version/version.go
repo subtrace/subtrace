@@ -66,11 +66,10 @@ func GetCanonicalString() string {
 }
 
 type Command struct {
+	ffcli.Command
 	flags struct {
 		json bool
 	}
-
-	ffcli.Command
 }
 
 func NewCommand() *ffcli.Command {

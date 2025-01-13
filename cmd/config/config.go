@@ -15,42 +15,30 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func (config *Config) FindMatchingRule(req *http.Request, resp *http.Response) (rule *Rule, found bool) {
-	for _, rule := range config.Rules {
-		matches, err := rule.Matches(req, resp)
-		// Ignore errors here and skip this rule because we want to be robust when tracing requests
-		if err != nil {
-			continue
-		}
-
-		if matches {
-			return &rule, true
-		}
-	}
-
-	return nil, false
+type Config struct {
+	Tags  map[string]string `yaml:"tags"`
+	Rules []Rule            `yaml:"rules"`
 }
 
-func New(filepath string) (*Config, error) {
-	if filepath == "" {
-		return nil, fmt.Errorf("no filepath specified")
+func (c *Config) Load(path string) error {
+	if path == "" {
+		return fmt.Errorf("empty path")
 	}
-	b, err := os.ReadFile(filepath)
+
+	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read config file: %w", err)
+		return fmt.Errorf("read: %w", err)
 	}
 
-	c := &Config{}
 	if err = yaml.Unmarshal(b, c); err != nil {
-		return nil, fmt.Errorf("parse config file: %w", err)
+		return fmt.Errorf("unmarshal: %w", err)
 	}
-	slog.Debug(fmt.Sprintf("parsed config file, found %d rules", len(c.Rules)))
-
 	if err := c.Validate(); err != nil {
-		return nil, fmt.Errorf("validate config file: %w", err)
+		return fmt.Errorf("validate: %w", err)
 	}
 
-	return c, nil
+	slog.Debug("parsed config", "rules", len(c.Rules))
+	return nil
 }
 
 func (c *Config) Validate() error {
@@ -94,6 +82,29 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+func (c *Config) FindMatchingRule(req *http.Request, resp *http.Response) (rule *Rule, found bool) {
+	for _, rule := range c.Rules {
+		matches, err := rule.Matches(req, resp)
+		// Ignore errors here and skip this rule because we want to be robust when tracing requests
+		if err != nil {
+			continue
+		}
+
+		if matches {
+			return &rule, true
+		}
+	}
+
+	return nil, false
+}
+
+type Rule struct {
+	If   string `yaml:"if"`
+	Then string `yaml:"then"`
+
+	program cel.Program
+}
+
 func (r *Rule) Matches(req *http.Request, resp *http.Response) (bool, error) {
 	celReq := map[string]any{
 		"method": req.Method,
@@ -117,16 +128,4 @@ func (r *Rule) Matches(req *http.Request, resp *http.Response) (bool, error) {
 	}
 
 	return match, nil
-}
-
-type Rule struct {
-	If   string `yaml:"if"`
-	Then string `yaml:"then"`
-
-	program cel.Program
-}
-
-type Config struct {
-	Rules []Rule            `yaml:"rules"`
-	Tags  map[string]string `yaml:"tags"`
 }
