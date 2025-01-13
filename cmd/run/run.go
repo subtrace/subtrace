@@ -23,7 +23,6 @@ import (
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"golang.org/x/sys/unix"
-	"subtrace.dev/cmd/config"
 	"subtrace.dev/cmd/run/engine"
 	"subtrace.dev/cmd/run/engine/process"
 	"subtrace.dev/cmd/run/engine/seccomp"
@@ -32,6 +31,7 @@ import (
 	"subtrace.dev/cmd/run/kernel"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/cmd/version"
+	"subtrace.dev/config"
 	"subtrace.dev/devtools"
 	"subtrace.dev/event"
 	"subtrace.dev/global"
@@ -286,7 +286,7 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		defer pprof.StopCPUProfile()
 	}
 
-	c.global.Config = new(config.Config)
+	c.global.Config = config.New()
 	if c.flags.config != "" {
 		if err := c.global.Config.Load(c.flags.config); err != nil {
 			return 1, fmt.Errorf("load config: %w", err)

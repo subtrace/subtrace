@@ -20,6 +20,12 @@ type Config struct {
 	Rules []Rule            `yaml:"rules"`
 }
 
+func New() *Config {
+	return &Config{
+		Tags: make(map[string]string),
+	}
+}
+
 func (c *Config) Load(path string) error {
 	if path == "" {
 		return fmt.Errorf("empty path")
