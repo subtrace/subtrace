@@ -430,6 +430,10 @@ func (c *Command) initEventBase() {
 			}
 		}()
 	}
+
+	for key, val := range c.config.Tags {
+		event.Base.Set(key, val)
+	}
 }
 
 var errMissingSysPtrace = fmt.Errorf("missing SYS_PTRACE")

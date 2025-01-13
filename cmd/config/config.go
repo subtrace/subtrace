@@ -127,5 +127,6 @@ type Rule struct {
 }
 
 type Config struct {
-	Rules []Rule `yaml:"rules"`
+	Rules []Rule            `yaml:"rules"`
+	Tags  map[string]string `yaml:"tags"`
 }

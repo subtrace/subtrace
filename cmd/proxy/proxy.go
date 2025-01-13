@@ -179,6 +179,11 @@ func (c *Command) initEventBase() {
 			}
 		}()
 	}
+
+	for key, val := range c.config.Tags {
+		event.Base.Set(key, val)
+	}
+
 }
 
 func (c *Command) start(ctx context.Context) error {
