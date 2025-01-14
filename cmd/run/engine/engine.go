@@ -16,10 +16,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/engine/process"
 	"subtrace.dev/cmd/run/engine/seccomp"
+	"subtrace.dev/cmd/run/socket"
 	"subtrace.dev/cmd/run/syscalls"
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/global"
@@ -28,6 +30,7 @@ import (
 type Engine struct {
 	global  *global.Global
 	seccomp *seccomp.Listener
+	itab    *socket.InodeTable
 
 	mu        sync.RWMutex
 	processes map[int]*process.Process
@@ -36,10 +39,11 @@ type Engine struct {
 	inPanic   atomic.Bool
 }
 
-func New(global *global.Global, seccomp *seccomp.Listener, root *process.Process) *Engine {
+func New(global *global.Global, seccomp *seccomp.Listener, itab *socket.InodeTable, root *process.Process) *Engine {
 	e := &Engine{
 		global:  global,
 		seccomp: seccomp,
+		itab:    itab,
 
 		processes: map[int]*process.Process{root.PID: root},
 		threads:   map[int]*process.Process{},
@@ -61,14 +65,96 @@ func (e *Engine) ensureProcessLocked(pid int) *process.Process {
 			return leader
 		}
 
-		e.processes[pid], err = process.New(e.global, pid)
+		p, err := process.New(e.global, e.itab, pid)
 		if err != nil {
 			panic(fmt.Errorf("new process: %w", err))
 		}
-		go e.waitProcess(e.processes[pid])
+
+		slog.Debug("observed new process", "proc", p)
+
+		// Import the new process' known inodes as sockets. We do this with the
+		// engine locked because this needs to happen exactly once for each process
+		// and must happen before handling the process' first syscall.
+		if err := e.importInodes(p); err != nil {
+			panic(fmt.Errorf("new process %d: import inodes: %w", p.PID, err))
+		}
+
+		e.processes[pid] = p
+		go e.waitProcess(p)
 	}
 
 	return e.processes[pid]
+}
+
+func (e *Engine) importInodes(p *process.Process) error {
+	dirfd, err := unix.Open(fmt.Sprintf("/proc/%d/fd/", p.PID), unix.O_RDONLY, 0o700)
+	if err != nil {
+		return fmt.Errorf("open dir: %w", err)
+	}
+	defer unix.Close(dirfd)
+
+	count := 0
+	for buf := make([]byte, 4096, 4096); ; {
+		n, _, errno := unix.Syscall(unix.SYS_GETDENTS64, uintptr(dirfd), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+		if errno != 0 {
+			return fmt.Errorf("getdents64: %w", errno)
+		}
+		if n == 0 {
+			break
+		}
+
+		for offset := 0; offset < int(n); {
+			dirent := (*unix.Dirent)(unsafe.Pointer(&buf[offset]))
+			offset += int(dirent.Reclen)
+
+			if dirent.Type != unix.DT_LNK {
+				continue
+			}
+
+			var stat unix.Stat_t
+			if errno := fstatat(dirfd, dirent, &stat); errno != 0 {
+				return fmt.Errorf("fstatat: %w", errno)
+			}
+
+			if stat.Mode&unix.S_IFMT != unix.S_IFSOCK {
+				continue
+			}
+
+			inode, ok := e.itab.Get(stat.Ino)
+			if !ok {
+				continue
+			}
+
+			targetFD, valid := 0, true
+			for i := 0; i < len(dirent.Name); i++ {
+				if dirent.Name[i] == '\x00' {
+					break
+				}
+
+				if !(dirent.Name[i] >= '0' && dirent.Name[i] <= '9') {
+					valid = false
+					break
+				}
+
+				targetFD *= 10
+				targetFD += int(dirent.Name[i] - '0')
+			}
+			if !valid {
+				continue
+			}
+
+			if err := p.ImportInode(targetFD, inode); err != nil {
+				return fmt.Errorf("import %d: %w", inode.Number, err)
+			}
+
+			count += 1
+		}
+	}
+
+	if count > 0 {
+		slog.Debug("imported inodes at process init", "proc", p, "count", count)
+	}
+	return nil
 }
 
 func (e *Engine) waitProcess(p *process.Process) {
@@ -189,6 +275,7 @@ func (e *Engine) handle(n *seccomp.Notif) {
 	}
 
 	p := e.getProcess(n.PID)
+
 	switch err := handler(p, n); {
 	case err == nil:
 	case errors.Is(err, seccomp.ErrCancelled):

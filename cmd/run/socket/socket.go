@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/netip"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -21,137 +20,21 @@ import (
 	"subtrace.dev/global"
 )
 
-const (
-	StatusPassive = iota
-	StatusConnected
-	StatusConnecting
-	StatusListening
-	StatusClosed
-)
-
-const (
-	InitiatorUndefined = iota
-	InitiatorProcess
-	InitiatorExternal
-)
-
-type immutable struct {
-	status int
-
-	passive struct {
-		bind  *fd.FD
-		errno syscall.Errno
-	}
-
-	connecting struct {
-		bind *fd.FD
-		peer netip.AddrPort
-	}
-
-	connected struct {
-		proxy *proxy
-	}
-
-	listening struct {
-		active  atomic.Bool
-		lis     net.Listener
-		backlog sync.Map
-	}
-}
-
-func getsockname(s *fd.FD) (netip.AddrPort, syscall.Errno, error) {
-	if !s.IncRef() {
-		return netip.AddrPort{}, unix.EBADF, nil
-	}
-	defer s.DecRef()
-
-	sa, err := unix.Getsockname(s.FD())
-	if err != nil {
-		var errno syscall.Errno
-		if !errors.As(err, &errno) {
-			return netip.AddrPort{}, 0, fmt.Errorf("getsockname: %w", err)
-		}
-		return netip.AddrPort{}, errno, nil
-	}
-
-	switch sa := sa.(type) {
-	case *unix.SockaddrInet4:
-		return netip.AddrPortFrom(netip.AddrFrom4(sa.Addr), uint16(sa.Port)), 0, nil
-	case *unix.SockaddrInet6:
-		return netip.AddrPortFrom(netip.AddrFrom16(sa.Addr), uint16(sa.Port)), 0, nil
-	}
-	panic("unreachable")
-}
-
-func (imm *immutable) getRemoteBindAddr() (netip.AddrPort, syscall.Errno, error) {
-	switch imm.status {
-	case StatusPassive:
-		if imm.passive.bind == nil {
-			return netip.AddrPort{}, 0, nil
-		}
-		return getsockname(imm.passive.bind)
-
-	case StatusConnected:
-		addr, err := netip.ParseAddrPort(imm.connected.proxy.external.LocalAddr().String())
-		if err != nil {
-			return netip.AddrPort{}, 0, fmt.Errorf("connected: parse addr: %w", err)
-		}
-		return addr, 0, nil
-
-	case StatusConnecting:
-		if imm.connecting.bind == nil {
-			panic("connecting socket has no bind")
-		}
-		return getsockname(imm.connecting.bind)
-
-	case StatusListening:
-		addr, err := netip.ParseAddrPort(imm.listening.lis.Addr().String())
-		if err != nil {
-			return netip.AddrPort{}, 0, fmt.Errorf("listen: parse addr: %w", err)
-		}
-		return addr, 0, nil
-
-	case StatusClosed:
-		return netip.AddrPort{}, unix.EBADF, nil
-	}
-	panic("unreachable")
-}
-
-func (imm *immutable) getRemotePeerAddr() (netip.AddrPort, syscall.Errno, error) {
-	switch imm.status {
-	case StatusPassive:
-		return netip.AddrPort{}, 0, nil
-
-	case StatusConnected:
-		addr, err := netip.ParseAddrPort(imm.connected.proxy.external.RemoteAddr().String())
-		if err != nil {
-			return netip.AddrPort{}, 0, fmt.Errorf("external conn: parse remote addr: %w", err)
-		}
-		return addr, 0, nil
-
-	case StatusConnecting:
-		return imm.connecting.peer, 0, nil
-
-	case StatusListening:
-		return netip.AddrPort{}, unix.EINVAL, nil
-
-	case StatusClosed:
-		return netip.AddrPort{}, unix.EBADF, nil
-	}
-	panic("unreachable")
-}
-
 type Socket struct {
 	global *global.Global
 	tmpl   *event.Event
 
-	Domain int
-	FD     *fd.FD
-
-	current atomic.Pointer[immutable]
+	Inode *Inode
+	FD    *fd.FD
 }
 
-func NewSocket(global *global.Global, tmpl *event.Event, domain int, typ int) (*Socket, error) {
+func NewSocket(global *global.Global, tmpl *event.Event, inode *Inode, fd *fd.FD) *Socket {
+	sock := &Socket{global: global, tmpl: tmpl, Inode: inode, FD: fd}
+	inode.add(sock)
+	return sock
+}
+
+func CreateSocket(global *global.Global, tmpl *event.Event, domain int, typ int) (*Socket, error) {
 	if domain != unix.AF_INET && domain != unix.AF_INET6 {
 		return nil, fmt.Errorf("unsupported domain 0x%x", domain)
 	}
@@ -166,56 +49,28 @@ func NewSocket(global *global.Global, tmpl *event.Event, domain int, typ int) (*
 	if err != nil {
 		return nil, fmt.Errorf("socket syscall: %w", err)
 	}
+
+	var stat unix.Stat_t
+	if err := unix.Fstat(ret, &stat); err != nil {
+		unix.Close(ret)
+		return nil, fmt.Errorf("fstat syscall: %w", err)
+	}
+
 	fd := fd.NewFD(ret)
 	defer fd.DecRef()
 
-	s := &Socket{global: global, tmpl: tmpl, Domain: domain, FD: fd}
-	s.current.Store(&immutable{status: StatusPassive})
-	slog.Debug("created socket", "sock", s)
-	return s, nil
+	state := &ImmutableState{state: StatePassive}
+	sock := NewSocket(global, tmpl, newInode(domain, stat.Ino, state), fd)
+	slog.Debug("created socket", "method", "new", "sock", sock)
+
+	return sock, nil
 }
 
 func (s *Socket) LogValue() slog.Value {
-	var status string
-	var extra []slog.Attr
-	switch cur := s.current.Load(); cur.status {
-	case StatusPassive:
-		status = "passive"
-	case StatusConnected:
-		status = "connected"
-		extra = append(extra, slog.Any("proxy", cur.connected.proxy))
-	case StatusConnecting:
-		status = "connecting"
-		extra = append(extra, slog.Any("bind", cur.connecting.bind), slog.Any("peer", cur.connecting.peer))
-	case StatusListening:
-		status = "listening"
-		extra = append(extra, slog.String("bind", cur.listening.lis.Addr().String()))
-		extra = append(extra, slog.Bool("active", cur.listening.active.Load()))
-	case StatusClosed:
-		status = "closed"
-	}
-
-	var domain string
-	switch s.Domain {
-	case unix.AF_INET:
-		domain = "AF_INET"
-	case unix.AF_INET6:
-		domain = "AF_INET6"
-	}
-
-	return slog.GroupValue(append([]slog.Attr{
-		slog.String("domain", domain),
-		slog.String("fd", s.FD.String()),
-		slog.String("status", status),
-	}, extra...)...)
-}
-
-func (s *Socket) isBlocking() (bool, error) {
-	flags, err := unix.FcntlInt(uintptr(s.FD.FD()), unix.F_GETFL, 0)
-	if err != nil {
-		return false, fmt.Errorf("get fcntl flags: %w", err)
-	}
-	return flags&unix.O_NONBLOCK == 0, nil
+	return slog.GroupValue([]slog.Attr{
+		slog.Any("inode", s.Inode),
+		slog.Any("fd", s.FD),
+	}...)
 }
 
 func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
@@ -224,26 +79,27 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 	}
 	defer s.FD.DecRef()
 
-	prev := s.current.Load()
-	switch prev.status {
-	case StatusPassive:
+	prev := s.Inode.state.Load()
+	switch prev.state {
+	case StatePassive:
 		break
-	case StatusConnected:
+	case StateConnected:
 		return unix.EISCONN, nil
-	case StatusConnecting:
+	case StateConnecting:
 		return unix.EALREADY, nil // TODO: only if the socket is non-blocking
-	case StatusListening:
+	case StateListening:
 		return unix.EINVAL, nil // TODO: what does linux say if you try to connect a listening socket?
-	case StatusClosed:
+	case StateClosed:
 		return unix.EBADF, nil
 	}
 
 	proxy := newProxy(s.global, s.tmpl, true)
 
-	isBlocking, err := s.isBlocking()
+	flags, err := unix.FcntlInt(uintptr(s.FD.FD()), unix.F_GETFL, 0)
 	if err != nil {
-		return 0, fmt.Errorf("check if socket is blocking: %w", err)
+		return 0, fmt.Errorf("fcntl: %w", err)
 	}
+	isBlocking := flags&unix.O_NONBLOCK == 0
 
 	bind, errno, err := prev.getRemoteBindAddr()
 	if err != nil {
@@ -255,17 +111,17 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 
 	slog.Debug("attempting socket connect", "sock", s, "addr", addr, "bind", bind, "isBlocking", isBlocking)
 
-	mid := &immutable{status: StatusConnecting}
+	mid := &ImmutableState{state: StateConnecting}
 	mid.connecting.bind = prev.passive.bind
 	mid.connecting.peer = addr
 
 	if mid.connecting.bind == nil {
 		var err error
-		mid.connecting.bind, err = newTempBindSocket(s.Domain)
+		mid.connecting.bind, err = newTempBindSocket(s.Inode.Domain)
 		if err != nil {
 			return 0, fmt.Errorf("create temp bind socket: %w", err)
 		}
-		bind, err = bindEphemeral(s.Domain, mid.connecting.bind, false)
+		bind, err = bindEphemeral(s.Inode.Domain, mid.connecting.bind, false)
 		if err != nil {
 			if !mid.connecting.bind.ClosingIncRef() {
 				panic("failed to incref local temp bind socket?") // there should be no other refs
@@ -277,7 +133,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 		}
 	}
 
-	if !s.current.CompareAndSwap(prev, mid) {
+	if !s.Inode.state.CompareAndSwap(prev, mid) {
 		if prev.passive.bind == nil && mid.connecting.bind.ClosingIncRef() {
 			defer mid.connecting.bind.DecRef()
 			mid.connecting.bind.Lock()
@@ -287,7 +143,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 	}
 
 	dummyCtx, dummyCancel := context.WithCancel(context.Background())
-	dummy, err := newDummyListener(dummyCtx, s.Domain)
+	dummy, err := newDummyListener(dummyCtx, s.Inode.Domain)
 	if err != nil {
 		dummyCancel()
 		return 0, fmt.Errorf("create dummy listener: %w", err)
@@ -350,7 +206,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 		defer dummyCancel()
 		wg.Wait()
 
-		var next *immutable
+		var next *ImmutableState
 		var errno unix.Errno
 
 		if err := errDummyAccept; err != nil {
@@ -370,13 +226,13 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 				goto out
 			}
 
-			next = &immutable{status: StatusPassive}
+			next = &ImmutableState{state: StatePassive}
 			next.passive.bind = mid.connecting.bind
 			next.passive.errno = errno
 			goto out
 		}
 
-		next = &immutable{status: StatusConnected}
+		next = &ImmutableState{state: StateConnected}
 		next.connected.proxy = proxy
 		go proxy.start()
 
@@ -384,13 +240,13 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 
 		shouldCloseBind := true
 		if next != nil {
-			if !s.current.CompareAndSwap(mid, next) {
+			if !s.Inode.state.CompareAndSwap(mid, next) {
 				errno = unix.ERESTART
 			} else {
 				// We created a temporary socket earlier (mid.connecting.bind) in case this
 				// was a non-blocking connect so that the tracee's getsockname calls will
 				// behave correctly in the time after the tracee's connect and before the
-				// immutable state CAS.
+				// state CAS.
 				//
 				// If the connect failed due to application-specific reasons such as
 				// ECONNREFUSED, next.status will be StatusPassive and there will
@@ -400,7 +256,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 				// so that next.passive.bind will remain open. In all other cases, it's
 				// guaranteed that there won't be any more new references to
 				// mid.connecting.bind, so it's okay to close the socket.
-				if next.status == StatusPassive {
+				if next.state == StatePassive {
 					shouldCloseBind = false
 				}
 			}
@@ -527,28 +383,28 @@ func (s *Socket) Bind(addr netip.AddrPort) (syscall.Errno, error) {
 	}
 	defer s.FD.DecRef()
 
-	prev := s.current.Load()
-	switch prev.status {
-	case StatusPassive:
+	prev := s.Inode.state.Load()
+	switch prev.state {
+	case StatePassive:
 		break
-	case StatusConnected, StatusConnecting, StatusListening:
+	case StateConnected, StateConnecting, StateListening:
 		return unix.EINVAL, nil
-	case StatusClosed:
+	case StateClosed:
 		return unix.EBADF, nil
 	}
 
-	if s.Domain == unix.AF_INET && !addr.Addr().Is4() {
+	if s.Inode.Domain == unix.AF_INET && !addr.Addr().Is4() {
 		return unix.EINVAL, nil
 	}
-	if s.Domain == unix.AF_INET6 && !addr.Addr().Is6() {
+	if s.Inode.Domain == unix.AF_INET6 && !addr.Addr().Is6() {
 		return unix.EINVAL, nil
 	}
 
-	next := &immutable{status: StatusPassive}
+	next := &ImmutableState{state: StatePassive}
 	next.passive.bind = prev.passive.bind
 	if next.passive.bind == nil {
 		var err error
-		next.passive.bind, err = newTempBindSocket(s.Domain)
+		next.passive.bind, err = newTempBindSocket(s.Inode.Domain)
 		if err != nil {
 			return 0, fmt.Errorf("create temp bind socket: %w", err)
 		}
@@ -560,7 +416,7 @@ func (s *Socket) Bind(addr netip.AddrPort) (syscall.Errno, error) {
 	defer next.passive.bind.DecRef()
 
 	var sa unix.Sockaddr
-	switch s.Domain {
+	switch s.Inode.Domain {
 	case unix.AF_INET:
 		sa = &unix.SockaddrInet4{Addr: addr.Addr().As4(), Port: int(addr.Port())}
 	case unix.AF_INET6:
@@ -571,18 +427,18 @@ func (s *Socket) Bind(addr netip.AddrPort) (syscall.Errno, error) {
 		if prev.passive.bind == nil {
 			unix.Close(next.passive.bind.FD())
 		}
-		next := &immutable{status: StatusPassive}
+		next := &ImmutableState{state: StatePassive}
 		next.passive.bind = prev.passive.bind
 		if !errors.As(err, &next.passive.errno) {
 			return 0, fmt.Errorf("bind: %w", err)
 		}
-		if !s.current.CompareAndSwap(prev, next) {
+		if !s.Inode.state.CompareAndSwap(prev, next) {
 			return unix.ERESTART, nil
 		}
 		return next.passive.errno, nil
 	}
 
-	if !s.current.CompareAndSwap(prev, next) { // TODO: unbind?
+	if !s.Inode.state.CompareAndSwap(prev, next) { // TODO: unbind?
 		if prev.passive.bind == nil {
 			unix.Close(next.passive.bind.FD())
 		}
@@ -598,7 +454,8 @@ func (s *Socket) BindAddr() (netip.AddrPort, syscall.Errno, error) {
 		return netip.AddrPort{}, unix.EBADF, nil
 	}
 	defer s.FD.DecRef()
-	return s.current.Load().getRemoteBindAddr()
+
+	return s.Inode.state.Load().getRemoteBindAddr()
 }
 
 func (s *Socket) PeerAddr() (netip.AddrPort, syscall.Errno, error) {
@@ -606,13 +463,18 @@ func (s *Socket) PeerAddr() (netip.AddrPort, syscall.Errno, error) {
 		return netip.AddrPort{}, unix.EBADF, nil
 	}
 	defer s.FD.DecRef()
-	return s.current.Load().getRemotePeerAddr()
+
+	return s.Inode.state.Load().getRemotePeerAddr()
 }
 
 func (s *Socket) Errno() unix.Errno {
-	cur := s.current.Load()
-	switch cur.status {
-	case StatusPassive:
+	if !s.FD.IncRef() {
+		return unix.EBADF
+	}
+	defer s.FD.DecRef()
+
+	switch cur := s.Inode.state.Load(); cur.state {
+	case StatePassive:
 		return cur.passive.errno
 	default:
 		return 0
@@ -625,15 +487,15 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 	}
 	defer s.FD.DecRef()
 
-	prev := s.current.Load()
-	switch prev.status {
-	case StatusPassive:
+	prev := s.Inode.state.Load()
+	switch prev.state {
+	case StatePassive:
 		break
-	case StatusConnected, StatusConnecting:
+	case StateConnected, StateConnecting:
 		return unix.EINVAL, nil // TODO: what does linux say if you try to listen a connected socket?
-	case StatusListening:
+	case StateListening:
 		return 0, nil
-	case StatusClosed:
+	case StateClosed:
 		return unix.EBADF, nil
 	}
 
@@ -643,7 +505,7 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 		backlog = 8
 	}
 
-	ephemeral, err := bindEphemeral(s.Domain, s.FD, true)
+	ephemeral, err := bindEphemeral(s.Inode.Domain, s.FD, true)
 	if err != nil {
 		return 0, fmt.Errorf("bind ephemeral: %w", err)
 	}
@@ -658,7 +520,7 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 
 	var lis net.Listener
 
-	switch s.Domain {
+	switch s.Inode.Domain {
 	case unix.AF_INET:
 		if !bind.IsValid() {
 			lis, err = net.Listen("tcp4", "127.0.0.1:0")
@@ -692,10 +554,10 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 		return 0, fmt.Errorf("virtual listen: %w", err)
 	}
 
-	next := &immutable{status: StatusListening}
+	next := &ImmutableState{state: StateListening}
 	next.listening.active.Store(true)
 	next.listening.lis = lis
-	if !s.current.CompareAndSwap(prev, next) {
+	if !s.Inode.state.CompareAndSwap(prev, next) {
 		lis.Close()
 		return unix.ERESTART, nil
 	}
@@ -761,15 +623,15 @@ func (s *Socket) Accept(flags int) (*Socket, syscall.Errno, error) {
 	}
 	defer s.FD.DecRef()
 
-	cur := s.current.Load()
-	switch cur.status {
-	case StatusPassive, StatusConnected, StatusConnecting:
+	cur := s.Inode.state.Load()
+	switch cur.state {
+	case StatePassive, StateConnected, StateConnecting:
 		return nil, unix.EINVAL, nil
-	case StatusListening:
+	case StateListening:
 		if !cur.listening.active.Load() {
 			return nil, unix.EINVAL, nil // TODO: right errno?
 		}
-	case StatusClosed:
+	case StateClosed:
 		return nil, unix.EBADF, nil
 	}
 
@@ -806,12 +668,20 @@ func (s *Socket) Accept(flags int) (*Socket, syscall.Errno, error) {
 	}
 	slog.Debug("accepter dequeued accepted connection", "sock", s, "addr", addr)
 
-	child := &Socket{global: s.global, tmpl: s.tmpl, Domain: s.Domain, FD: fd.NewFD(ret)}
-	defer child.FD.DecRef()
+	var stat unix.Stat_t
+	if err := unix.Fstat(ret, &stat); err != nil {
+		unix.Close(ret)
+		return nil, 0, fmt.Errorf("stat after channel receive: %w", err)
+	}
 
-	state := &immutable{status: StatusConnected}
+	fd := fd.NewFD(ret)
+	defer fd.DecRef()
+
+	state := &ImmutableState{state: StateConnected}
 	state.connected.proxy = p
-	child.current.Store(state)
+	child := NewSocket(s.global, s.tmpl, newInode(s.Inode.Domain, stat.Ino, state), fd)
+	slog.Debug("created socket", "method", "accept", "sock", child)
+
 	go p.start()
 
 	return child, 0, nil
@@ -832,21 +702,26 @@ func (s *Socket) Close() syscall.Errno {
 		return errno
 	}
 
+	if last := s.Inode.remove(s); !last {
+		return 0
+	}
+
 	var errs []error
-	var prev *immutable
+	var prev *ImmutableState
 	for {
-		prev = s.current.Load()
-		if prev.status == StatusClosed {
-			panic("entered closing incref because file descriptor was not close, but current status is closed")
+		prev = s.Inode.state.Load()
+		if prev.state == StateClosed {
+			panic(fmt.Errorf("final socket close for inode %d: inode state is already closed", s.Inode.Number))
 		}
-		next := &immutable{status: StatusClosed}
-		if s.current.CompareAndSwap(prev, next) {
+
+		next := &ImmutableState{state: StateClosed}
+		if s.Inode.state.CompareAndSwap(prev, next) {
 			break
 		}
 	}
 
-	switch prev.status {
-	case StatusPassive:
+	switch prev.state {
+	case StatePassive:
 		if prev.passive.bind != nil && prev.passive.bind.ClosingIncRef() {
 			defer prev.passive.bind.DecRef()
 			prev.passive.bind.Lock()
@@ -855,7 +730,7 @@ func (s *Socket) Close() syscall.Errno {
 			}
 		}
 
-	case StatusConnected:
+	case StateConnected:
 		if prev.connected.proxy.skipCloseTCP.CompareAndSwap(false, true) {
 			// We can't close the two underlying TCP connections yet because the
 			// proxy might still have some unflushed bytes in a buffer somewhere. The
@@ -871,7 +746,7 @@ func (s *Socket) Close() syscall.Errno {
 			}
 		}
 
-	case StatusConnecting:
+	case StateConnecting:
 		if prev.connecting.bind.ClosingIncRef() {
 			defer prev.connecting.bind.DecRef()
 			prev.connecting.bind.Lock()
@@ -880,7 +755,7 @@ func (s *Socket) Close() syscall.Errno {
 			}
 		}
 
-	case StatusListening:
+	case StateListening:
 		// If the listening goroutine has already exited (maybe something went
 		// wrong with the listener), don't try to close the listener again.
 		if prev.listening.active.CompareAndSwap(true, false) {
@@ -1046,4 +921,28 @@ func bindEphemeral(domain int, fd *fd.FD, loopback bool) (netip.AddrPort, error)
 	default:
 		panic(fmt.Sprintf("unknown sockaddr type %T", sa))
 	}
+}
+
+func getsockname(fd *fd.FD) (netip.AddrPort, syscall.Errno, error) {
+	if !fd.IncRef() {
+		return netip.AddrPort{}, unix.EBADF, nil
+	}
+	defer fd.DecRef()
+
+	sa, err := unix.Getsockname(fd.FD())
+	if err != nil {
+		var errno syscall.Errno
+		if !errors.As(err, &errno) {
+			return netip.AddrPort{}, 0, fmt.Errorf("getsockname: %w", err)
+		}
+		return netip.AddrPort{}, errno, nil
+	}
+
+	switch sa := sa.(type) {
+	case *unix.SockaddrInet4:
+		return netip.AddrPortFrom(netip.AddrFrom4(sa.Addr), uint16(sa.Port)), 0, nil
+	case *unix.SockaddrInet6:
+		return netip.AddrPortFrom(netip.AddrFrom16(sa.Addr), uint16(sa.Port)), 0, nil
+	}
+	panic("unreachable")
 }

@@ -278,7 +278,7 @@ func (p *Process) handleSocket(n *seccomp.Notif, domain, typ, protocol int) erro
 		return n.Skip()
 	}
 
-	sock, err := socket.NewSocket(p.global, p.getEventTemplate().Copy(), domain, typ)
+	sock, err := socket.CreateSocket(p.global, p.getEventTemplate().Copy(), domain, typ)
 	if err != nil {
 		return fmt.Errorf("create new socket: %w", err)
 	}
@@ -370,7 +370,7 @@ func (p *Process) handleAccept(n *seccomp.Notif, fd int, addrPtr uintptr, addrSi
 			return n.Return(0, errno)
 		}
 
-		if s.Domain == unix.AF_INET6 && peer.Addr().Is4() {
+		if s.Inode.Domain == unix.AF_INET6 && peer.Addr().Is4() {
 			// `python -m http.server -b ::` followed by `curl -4 localhost:8000`
 			// reports the client address as ::ffff:127.0.0.1, not the IPv4 address.
 			peer = netip.AddrPortFrom(netip.AddrFrom16(peer.Addr().As16()), peer.Port())
@@ -451,7 +451,7 @@ func (p *Process) handleGetsockname(n *seccomp.Notif, fd int, addrPtr uintptr, a
 		return n.Return(0, 0)
 	}
 
-	if s.Domain == unix.AF_INET6 && bind.Addr().Is4() {
+	if s.Inode.Domain == unix.AF_INET6 && bind.Addr().Is4() {
 		bind = netip.AddrPortFrom(netip.AddrFrom16(bind.Addr().As16()), bind.Port())
 	}
 
@@ -485,7 +485,7 @@ func (p *Process) handleGetpeername(n *seccomp.Notif, fd int, addrPtr uintptr, a
 		return n.Return(0, unix.ENOTCONN)
 	}
 
-	if s.Domain == unix.AF_INET6 && peer.Addr().Is4() {
+	if s.Inode.Domain == unix.AF_INET6 && peer.Addr().Is4() {
 		peer = netip.AddrPortFrom(netip.AddrFrom16(peer.Addr().As16()), peer.Port())
 	}
 
