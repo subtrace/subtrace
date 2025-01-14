@@ -140,26 +140,31 @@ class Manager {
   }
 }
 
-function closeNonNetworkTabs() {
+function main() {
   const pane = window.subtrace.InspectorView.instance().tabbedPane;
   pane.closeTabs(pane.otherTabs("network"));
 
-  leftToolBar = pane.leftToolbar();
-  leftToolBar.style.width = 0;
-  leftToolBar.style.minWidth = 0;
-}
+  const leftToolbar = pane.leftToolbar();
+  leftToolbar.style.width = 0;
+  leftToolbar.style.minWidth = 0;
 
-function main() {
   const manager = new Manager();
   console.log("subtrace: initializing");
-
-  closeNonNetworkTabs();
 }
 
-// Run this on the first DOM mutation to ensure that the devtools bundle
-// has parsed and executed.
-observer = new MutationObserver(() => {
-  main();
-  observer.disconnect();
-});
-observer.observe(document.body, { childList: true });
+function init() {
+  let done = false;
+  const mutex = new Mutex();
+  const observer = new MutationObserver(() => {
+    if (!done && mutex.tryLock()) {
+      main();
+      observer.disconnect();
+      done = true;
+      mutex.unlock();
+    }
+  });
+
+  observer.observe(document.body, { childList: true });
+}
+
+init();
