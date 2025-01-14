@@ -29,6 +29,7 @@ import (
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/futex"
 	"subtrace.dev/cmd/run/kernel"
+	"subtrace.dev/cmd/run/socket"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/config"
@@ -355,12 +356,14 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	}
 	go tags.SetLocalTagsAsync(c.global.EventTemplate)
 
-	root, err := process.New(c.global, pid)
+	itab := socket.NewInodeTable()
+
+	root, err := process.New(c.global, itab, pid)
 	if err != nil {
 		return 0, fmt.Errorf("new process: %w", err)
 	}
 
-	eng := engine.New(c.global, sec, root)
+	eng := engine.New(c.global, sec, itab, root)
 	go eng.Start()
 
 	var status unix.WaitStatus

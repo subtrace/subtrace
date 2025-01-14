@@ -26,6 +26,7 @@ import (
 
 type Process struct {
 	global *global.Global
+	itab   *socket.InodeTable
 
 	PID    int
 	Exited chan struct{}
@@ -33,29 +34,29 @@ type Process struct {
 	pidfd   *fd.FD
 	mu      sync.RWMutex
 	sockets map[int]*socket.Socket
-	links   map[string]string
 
 	tmpl atomic.Pointer[event.Event]
 }
 
 // New creates a new process with the given PID.
-func New(global *global.Global, pid int) (*Process, error) {
+func New(global *global.Global, itab *socket.InodeTable, pid int) (*Process, error) {
 	ret, _, errno := unix.Syscall(unix.SYS_PIDFD_OPEN, uintptr(pid), 0, 0)
 	if errno != 0 {
 		return nil, fmt.Errorf("pidfd_open %d: %w", pid, errno)
 	}
+
 	pidfd := fd.NewFD(int(ret))
 	defer pidfd.DecRef()
 
 	return &Process{
 		global: global,
+		itab:   itab,
 
 		PID:    pid,
 		Exited: make(chan struct{}),
 
 		pidfd:   pidfd,
 		sockets: make(map[int]*socket.Socket),
-		links:   make(map[string]string),
 	}, nil
 }
 
@@ -123,6 +124,8 @@ func (p *Process) installSocket(n *seccomp.Notif, sock *socket.Socket, flags int
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	p.itab.Add(sock.Inode)
+
 	fd, err := n.AddFD(sock.FD, flags)
 	if err != nil {
 		return fmt.Errorf("addfd: %w", err)
@@ -136,9 +139,31 @@ func (p *Process) installSocket(n *seccomp.Notif, sock *socket.Socket, flags int
 	return nil
 }
 
+func (p *Process) ImportInode(targetFD int, inode *socket.Inode) error {
+	fd, errno := p.getFD(targetFD)
+	if errno != 0 {
+		return fmt.Errorf("get fd: %w", errno)
+	}
+	defer fd.DecRef()
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if old, ok := p.sockets[targetFD]; ok {
+		return fmt.Errorf("import socket: targetFD=%d already exists: %s", targetFD, old.LogValue().String())
+	}
+
+	sock := socket.NewSocket(p.global, p.getEventTemplate().Copy(), inode, fd)
+	p.sockets[targetFD] = sock
+
+	slog.Debug("imported inode", "proc", p, "inode", inode, "sock", sock)
+	return nil
+}
+
 func (p *Process) getSocket(fd int) (*socket.Socket, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+
 	s, ok := p.sockets[fd]
 	if !ok {
 		return nil, false
@@ -149,11 +174,11 @@ func (p *Process) getSocket(fd int) (*socket.Socket, bool) {
 func (p *Process) getDeleteSocket(fd int) (*socket.Socket, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	s, ok := p.sockets[fd]
-	if !ok {
-		return nil, false
+	if ok {
+		delete(p.sockets, fd)
 	}
-	delete(p.sockets, fd)
 	return s, ok
 }
 
