@@ -424,6 +424,21 @@ func (p *Process) handleGetsockopt(n *seccomp.Notif, fd int, level int, name int
 	return n.Return(0, errno)
 }
 
+// handleSetsockopt handles the setsockopt(2) syscall to allow ignoring
+// TCP_DEFER_ACCEPT.
+func (p *Process) handleSetsockopt(n *seccomp.Notif, fd int, level int, name int, valPtr uintptr, valSize uint32) error {
+	_, ok := p.getSocket(fd)
+	if !ok {
+		return n.Skip()
+	}
+
+	if level == unix.SOL_TCP && name == unix.TCP_DEFER_ACCEPT {
+		return n.Return(0, 0)
+	}
+
+	return n.Skip()
+}
+
 // handleGetsockname handles the getsockname(2) syscall to emulate the external
 // connection's bind address.
 func (p *Process) handleGetsockname(n *seccomp.Notif, fd int, addrPtr uintptr, addrSizePtr uintptr) error {
@@ -566,6 +581,10 @@ func init() {
 
 	Handlers[unix.SYS_GETSOCKOPT] = func(p *Process, n *seccomp.Notif) error {
 		return p.handleGetsockopt(n, int(int32(n.Args[0])), int(n.Args[1]), int(n.Args[2]), uintptr(n.Args[3]), uintptr(n.Args[4]))
+	}
+
+	Handlers[unix.SYS_SETSOCKOPT] = func(p *Process, n *seccomp.Notif) error {
+		return p.handleSetsockopt(n, int(int32(n.Args[0])), int(n.Args[1]), int(n.Args[2]), uintptr(n.Args[3]), uint32(n.Args[4]))
 	}
 
 	Handlers[unix.SYS_GETSOCKNAME] = func(p *Process, n *seccomp.Notif) error {
