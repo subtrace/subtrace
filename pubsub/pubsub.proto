@@ -18,7 +18,7 @@ message JoinPublisher {
 // POST /api/JoinSubscriber
 message JoinSubscriber {
   message Request {
-    string namespace_id = 1;
+    optional string namespace_id = 1;
   }
 
   message Response {
