@@ -545,13 +545,17 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 		return 0, fmt.Errorf("external side listen: %w", err)
 	}
 
-	if err := unix.Listen(s.FD.FD(), backlog); err != nil {
-		lis.Close()
-		var errno syscall.Errno
-		if errors.As(err, &errno) {
-			return errno, nil
+	if prev.passive.bind != nil {
+		// Close after starting the actual listener so that we don't race with any
+		// other program trying to listen on the same port.
+		if prev.passive.bind.ClosingIncRef() {
+			defer prev.passive.bind.DecRef()
+			unix.Close(prev.passive.bind.FD())
+		} else {
+			// This isn't critical because it's possible we've already closed the
+			// previous passive bind. We just need to make sure we don't leak the
+			// file descriptor.
 		}
-		return 0, fmt.Errorf("virtual listen: %w", err)
 	}
 
 	next := &ImmutableState{state: StateListening}
@@ -587,7 +591,7 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 	}()
 
 	go func() { // dispatch loop
-		for conn := range buffer {
+		for p := range buffer {
 			go func(p *proxy) {
 				process, err := net.Dial("tcp", ephemeral.String())
 				if err != nil {
@@ -609,11 +613,11 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 				}
 				ch <- p
 				slog.Debug("dispatcher enqueued accepted connection", "sock", s, "addr", addr)
-			}(conn)
+			}(p)
 		}
 	}()
 
-	slog.Debug("marked socket as listening", "sock", s, "addr", bind)
+	slog.Debug("marked socket as listening", "sock", s, "addr", bind, "backlog", backlog)
 	return 0, nil
 }
 
@@ -913,11 +917,11 @@ func bindEphemeral(domain int, fd *fd.FD, loopback bool) (netip.AddrPort, error)
 		return netip.AddrPort{}, fmt.Errorf("get ephemeral address: %w", err)
 	}
 
-	switch addr := sa.(type) {
+	switch sa := sa.(type) {
 	case *unix.SockaddrInet4:
-		return netip.AddrPortFrom(netip.AddrFrom4(addr.Addr), uint16(addr.Port)), nil
+		return netip.AddrPortFrom(netip.AddrFrom4(sa.Addr), uint16(sa.Port)), nil
 	case *unix.SockaddrInet6:
-		return netip.AddrPortFrom(netip.AddrFrom16(addr.Addr), uint16(addr.Port)), nil
+		return netip.AddrPortFrom(netip.AddrFrom16(sa.Addr), uint16(sa.Port)), nil
 	default:
 		panic(fmt.Sprintf("unknown sockaddr type %T", sa))
 	}

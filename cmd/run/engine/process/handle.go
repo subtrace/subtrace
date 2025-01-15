@@ -343,7 +343,10 @@ func (p *Process) handleListen(n *seccomp.Notif, fd int, backlog int) error {
 	if err != nil {
 		return fmt.Errorf("mark socket as listening: %w", err)
 	}
-	return n.Return(0, errno)
+	if errno != 0 {
+		return n.Return(0, errno)
+	}
+	return n.Skip()
 }
 
 // handleAccept handles the accept(2) and accept4(2) syscalls.
