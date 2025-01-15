@@ -293,6 +293,8 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		}
 	}
 
+	tracer.InitPublisher(ctx)
+
 	go c.watchSignals()
 
 	if c.flags.log == nil {
