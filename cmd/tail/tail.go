@@ -211,7 +211,7 @@ func (s *subscriber) Event_V1(x *pubsub.Event_V1) error {
 	select {
 	case <-s.ready:
 	default:
-		fmt.Printf("dropping %p because not ready\n", x)
+		slog.Debug("dropping event because filters are yet to be applied", "event", fmt.Sprintf("%p", x))
 		return nil
 	}
 
