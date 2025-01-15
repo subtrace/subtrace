@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +21,9 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/google/martian/v3/har"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/proto"
 	"subtrace.dev/global"
+	"subtrace.dev/pubsub"
 )
 
 var PayloadLimitBytes int64 = 4096 // bytes
@@ -204,10 +207,43 @@ func (p *Parser) Finish() error {
 		go p.global.Devtools.Send(b)
 	}
 
-	ev := p.global.EventTemplate.Copy()
-	ev.Set("event_id", p.eventID.String())
-	ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(b))
-	DefaultManager.Insert(ev.String())
+	switch strings.ToLower(os.Getenv("SUBTRACE_REFLECTOR")) {
+	case "1", "t", "true", "y", "yes":
+		b, err := proto.Marshal(&pubsub.Message{
+			Concrete: &pubsub.Message_ConcreteV1{
+				ConcreteV1: &pubsub.Message_V1{
+					Underlying: &pubsub.Message_V1_Event{
+						Event: &pubsub.Event{
+							Concrete: &pubsub.Event_ConcreteV1{
+								ConcreteV1: &pubsub.Event_V1{
+									HarEntryJson: b,
+									Tags:         p.global.Config.Tags,
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+
+		if err != nil {
+			slog.Error("failed to marshal pubsub message", "err", err)
+			break
+		}
+
+		select {
+		case defaultPublisher.ch <- b:
+		default:
+			slog.Error("publisher buffer full, dropping event", "eventID", p.eventID)
+		}
+
+	default:
+		ev := p.global.EventTemplate.Copy()
+		ev.Set("event_id", p.eventID.String())
+		ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(b))
+		DefaultManager.Insert(ev.String())
+	}
+
 	return nil
 }
 

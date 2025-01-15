@@ -107,6 +107,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 
 	tracer.DefaultManager.SetLog(*c.flags.log)
 
+	tracer.InitPublisher(ctx)
 	go tracer.DefaultManager.StartBackgroundFlush(ctx)
 	defer func() {
 		if err := tracer.DefaultManager.Flush(); err != nil {
