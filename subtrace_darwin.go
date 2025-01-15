@@ -6,12 +6,14 @@ package main
 import (
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"subtrace.dev/cmd/proxy"
+	"subtrace.dev/cmd/tail"
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/cmd/worker"
 )
 
 var subcommands = []*ffcli.Command{
 	proxy.NewCommand(),
+	tail.NewCommand(),
 	worker.NewCommand(),
 	version.NewCommand(),
 }
