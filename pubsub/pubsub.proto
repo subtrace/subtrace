@@ -38,10 +38,34 @@ message Event {
   }
 }
 
+message SetSubscriberConfig {
+  message V1 {
+    message Call {
+      uint64 revision = 1;
+      repeated string filters = 2;
+    }
+
+    message Result {
+      uint64 revision = 1;
+      optional string error = 2;
+    }
+
+    oneof type {
+      Call call = 1;
+      Result result = 2;
+    }
+  }
+
+  oneof concrete {
+    V1 concrete_v1 = 1;
+  }
+}
+
 message Message {
   message V1 {
     oneof underlying {
       Event event = 1;
+      SetSubscriberConfig set_subscriber_config = 2;
     }
   }
 
