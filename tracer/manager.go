@@ -149,6 +149,8 @@ func (b *block) flushOnce(ctx context.Context) error {
 		return nil
 	}
 
+	slog.Debug("flushing event buffer block", "block", b)
+
 	var tun tunnel.Create_Response
 	if code, err := rpc.Call(ctx, &tun, "/api/CreateTunnel", &tunnel.Create_Request{Role: tunnel.Role_INSERT}); err != nil {
 		return fmt.Errorf("call CreateTunnel: %w", err)
@@ -191,7 +193,6 @@ func (b *block) flush(ctx context.Context) error {
 		return nil
 	}
 
-	slog.Debug("flushing event buffer block", "block", b)
 	err := b.flushOnce(ctx)
 	if err == nil {
 		return nil
