@@ -294,3 +294,5 @@ func (s *sampler) Close() error {
 	s.setError(err)
 	return err
 }
+
+// Just testing whether GitHub is being weird
