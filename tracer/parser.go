@@ -207,44 +207,62 @@ func (p *Parser) Finish() error {
 		go p.global.Devtools.Send(b)
 	}
 
+	var sendReflector, sendTunneler bool
 	switch strings.ToLower(os.Getenv("SUBTRACE_REFLECTOR")) {
 	case "1", "t", "true", "y", "yes":
-		b, err := proto.Marshal(&pubsub.Message{
-			Concrete: &pubsub.Message_ConcreteV1{
-				ConcreteV1: &pubsub.Message_V1{
-					Underlying: &pubsub.Message_V1_Event{
-						Event: &pubsub.Event{
-							Concrete: &pubsub.Event_ConcreteV1{
-								ConcreteV1: &pubsub.Event_V1{
-									HarEntryJson: b,
-									Tags:         p.global.Config.Tags,
-								},
+		sendReflector, sendTunneler = true, false
+	case "0", "f", "false", "n", "no":
+		sendReflector, sendTunneler = false, true
+	case "both":
+		sendReflector, sendTunneler = true, true
+	default:
+		sendReflector, sendTunneler = true, false
+	}
+	if sendReflector {
+		if err := p.sendReflector(b); err != nil {
+			slog.Error("failed to publish event to reflector", "eventID", p.eventID, "err", err)
+		}
+	}
+	if sendTunneler {
+		p.sendTunneler(b)
+	}
+	return nil
+}
+
+func (p *Parser) sendReflector(harJSON []byte) error {
+	b, err := proto.Marshal(&pubsub.Message{
+		Concrete: &pubsub.Message_ConcreteV1{
+			ConcreteV1: &pubsub.Message_V1{
+				Underlying: &pubsub.Message_V1_Event{
+					Event: &pubsub.Event{
+						Concrete: &pubsub.Event_ConcreteV1{
+							ConcreteV1: &pubsub.Event_V1{
+								HarEntryJson: harJSON,
+								Tags:         p.global.Config.Tags,
 							},
 						},
 					},
 				},
 			},
-		})
-
-		if err != nil {
-			slog.Error("failed to marshal pubsub message", "err", err)
-			break
-		}
-
-		select {
-		case defaultPublisher.ch <- b:
-		default:
-			slog.Error("publisher buffer full, dropping event", "eventID", p.eventID)
-		}
-
-	default:
-		ev := p.global.EventTemplate.Copy()
-		ev.Set("event_id", p.eventID.String())
-		ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(b))
-		DefaultManager.Insert(ev.String())
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("marshal proto: %w", err)
 	}
 
-	return nil
+	select {
+	case defaultPublisher.ch <- b:
+		return nil
+	default:
+		return fmt.Errorf("publisher channel buffer full")
+	}
+}
+
+func (p *Parser) sendTunneler(harJSON []byte) {
+	ev := p.global.EventTemplate.Copy()
+	ev.Set("event_id", p.eventID.String())
+	ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(harJSON))
+	DefaultManager.Insert(ev.String())
 }
 
 type sampler struct {
