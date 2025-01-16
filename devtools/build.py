@@ -90,20 +90,7 @@ def main():
     js = embed_images(js)
     js = embed_locale(js)
     js = embed_live_metrics(js)
-
-    html = ""
-    html += """<!DOCTYPE html>"""
-    html += """<html>"""
-    html += """<head><meta charset="utf-8"><title>Subtrace</title></head>"""
-    html += """<style>@media(prefers-color-scheme: dark) { body { background-color: rgb(41 42 45); } }</style>"""
-    html += """<!-- see https://chromium.googlesource.com/devtools/devtools-frontend/+/refs/heads/main/LICENSE for licenses -->"""
-    html += """<body class="undocked" id="-blink-dev-tools"></body>"""
-    html += """<script>window.subtrace = {}</script>"""
-    html += """<script type="module">""" + js + """</script>"""
-    html += """<script>try { __SUBTRACE_INIT__ } catch (e) { console.log("subtrace: init hook failed", e) }</script>"""
-    html += """</html>"""
-
-    sys.stdout.write(html)
+    sys.stdout.write(js)
 
 if __name__ == "__main__":
     main()
