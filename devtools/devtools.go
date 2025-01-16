@@ -41,6 +41,10 @@ var bundle embed.FS
 //go:embed init.js
 var initJS []byte
 
+func SetInitJS(b []byte) {
+	initJS = b
+}
+
 var html = []byte(`<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Subtrace</title></head>
