@@ -13,10 +13,10 @@ jobs:
         fetch-depth: 0
     - uses: actions/download-artifact@v4
       with:
-        name: devtools.html.gz
+        name: devtools.js.gz
         path: ./devtools/bundle
         github-token: ${{ secrets.SUBTRACE_ARTIFACT_DOWNLAOD_TOKEN }}
-        run-id: 12591477411
+        run-id: 12800482025
     - run: |
         set -e
 

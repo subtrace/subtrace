@@ -7,4 +7,4 @@ depot_tools/
 devtools-frontend/
 .cipd/
 
-devtools.html.gz
+devtools.js.gz

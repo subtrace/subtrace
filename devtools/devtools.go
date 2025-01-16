@@ -41,13 +41,22 @@ var bundle embed.FS
 //go:embed init.js
 var initJS []byte
 
-var html []byte
+var html = []byte(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Subtrace</title></head>
+<style>@media(prefers-color-scheme: dark) { body { background-color: rgb(41 42 45); } }</style>
+<!-- see https://chromium.googlesource.com/devtools/devtools-frontend/+/refs/heads/main/LICENSE for licenses -->
+<body class="undocked" id="-blink-dev-tools"></body>
+<script>window.subtrace = {}</script>
+<script type="module">__DEVTOOLS_BUNDLE__</script>
+<script>try { __SUBTRACE_INIT__ } catch (e) { console.log("subtrace: init hook failed", e) }</script>
+</html>`)
 
 var once sync.Once
 
 func bundleOnce() {
 	once.Do(func() {
-		f, err := bundle.Open("bundle/devtools.html.gz")
+		f, err := bundle.Open("bundle/devtools.js.gz")
 		if err != nil {
 			html = fallback("This build of subtrace was compiled without Chrome DevTools support.")
 			return
@@ -60,12 +69,13 @@ func bundleOnce() {
 			return
 		}
 
-		html, err = io.ReadAll(r)
+		bundle, err := io.ReadAll(r)
 		if err != nil {
 			html = fallback(fmt.Sprintf("Subtrace failed to extract the gzip devtools bundle.<br><br>Error: %q", fmt.Errorf("read: %w", err)))
 			return
 		}
 
+		html = bytes.ReplaceAll(html, []byte("__DEVTOOLS_BUNDLE__"), bundle)
 		html = bytes.ReplaceAll(html, []byte("__SUBTRACE_INIT__"), initJS)
 	})
 }
