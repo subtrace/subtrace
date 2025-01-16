@@ -4,6 +4,7 @@
 package process
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/netip"
@@ -259,6 +260,46 @@ func (p *Process) handleClose(n *seccomp.Notif, fd int) error {
 	// Allow the syscall to proceed so that the process can close its copy of the
 	// socket from its file descriptor table.
 	return n.Skip()
+}
+
+// handleFcntl handles the fcntl(2) syscall.
+func (p *Process) handleFcntl(n *seccomp.Notif, srcFD int, cmd int, arg int) error {
+	if cmd != unix.F_DUPFD && cmd != unix.F_DUPFD_CLOEXEC {
+		return n.Skip()
+	}
+
+	src, ok := p.getSocket(srcFD)
+	if !ok {
+		return n.Skip()
+	}
+
+	if !src.FD.IncRef() {
+		return n.Return(0, unix.EBADF)
+	}
+	defer src.FD.DecRef()
+
+	dup, err := unix.FcntlInt(uintptr(src.FD.FD()), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		var errno syscall.Errno
+		if errors.As(err, &errno) {
+			return n.Return(0, errno)
+		}
+		return fmt.Errorf("fcntl: %w", err)
+	}
+
+	dstFD := fd.NewFD(dup)
+	defer dstFD.DecRef()
+
+	dst := socket.NewSocket(p.global, p.getEventTemplate().Copy(), src.Inode, dstFD)
+
+	switch cmd {
+	case unix.F_DUPFD:
+		return p.installSocket(n, dst, 0)
+	case unix.F_DUPFD_CLOEXEC:
+		return p.installSocket(n, dst, unix.SOCK_CLOEXEC)
+	default:
+		panic("unreachable")
+	}
 }
 
 // handleSocket handles the socket(2) syscall.
@@ -557,6 +598,10 @@ func init() {
 
 	Handlers[unix.SYS_CLOSE] = func(p *Process, n *seccomp.Notif) error {
 		return p.handleClose(n, int(int32(n.Args[0])))
+	}
+
+	Handlers[unix.SYS_FCNTL] = func(p *Process, n *seccomp.Notif) error {
+		return p.handleFcntl(n, int(int32(n.Args[0])), int(n.Args[1]), int(n.Args[2]))
 	}
 
 	Handlers[unix.SYS_SOCKET] = func(p *Process, n *seccomp.Notif) error {
