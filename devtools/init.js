@@ -156,7 +156,7 @@ function init() {
   let done = false;
   const mutex = new Mutex();
   const observer = new MutationObserver(() => {
-    if (!done && mutex.tryLock()) {
+    if (window.subtrace.InspectorView && !done && mutex.tryLock()) {
       main();
       observer.disconnect();
       done = true;
