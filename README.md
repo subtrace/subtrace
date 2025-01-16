@@ -15,8 +15,9 @@ a HTTP request again.
 
 #### Features
 
-* Works out-of-the-box with all languages (Python, Node, Go, and everything else)
-* Zero instrumentation code changes needed
+* Works out-of-the-box
+* Supports all languages (Python, Node, Go, and everything else)
+* No instrumentation code changes required
 * Less than 100µs performance overhead
 * Built on Clickhouse
 * Open source
