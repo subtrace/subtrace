@@ -223,6 +223,8 @@ func (s *subscriber) Event_V1(x *pubsub.Event_V1) error {
 	switch s.tail.flags.format {
 	case "text":
 		fmt.Printf("%8s    %d    %s %q\n", time.Duration(entry.Time)*time.Millisecond, entry.Response.Status, entry.Request.Method, entry.Request.URL)
+	case "json":
+		fmt.Printf("%s\n", x.HarEntryJson)
 	}
 
 	return nil
