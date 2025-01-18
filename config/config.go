@@ -43,7 +43,7 @@ func (c *Config) Load(path string) error {
 		return fmt.Errorf("validate: %w", err)
 	}
 
-	slog.Debug("parsed config", "rules", len(c.Rules))
+	slog.Debug("parsed config", "rules", len(c.Rules), "tags", len(c.Tags))
 	return nil
 }
 
@@ -54,6 +54,19 @@ func (c *Config) Validate() error {
 	)
 	if err != nil {
 		return fmt.Errorf("create cel env: %w", err)
+	}
+
+	for key := range c.Tags {
+		for _, c := range key {
+			switch {
+			case c >= 'a' && c <= 'z':
+			case c >= 'A' && c <= 'Z':
+			case c >= '0' && c <= '9':
+			case c == '_':
+			default:
+				return fmt.Errorf("invalid tag key: %q", key)
+			}
+		}
 	}
 
 	for index, rule := range c.Rules {
