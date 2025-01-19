@@ -25,7 +25,7 @@ jobs:
 
         for os in linux darwin; do
           for arch in amd64 arm64; do
-            echo "GOOS=${os} GOARCH=${arch} go build"
+            echo "GOOS=${os} GOARCH=${arch}"
             GOOS=${os} GOARCH=${arch} time make subtrace
             mv subtrace subtrace-${os}-${arch}
           done
@@ -56,6 +56,13 @@ jobs:
               -H "X-GitHub-Api-Version: 2022-11-28" \
               --data-binary "@${file}"
         done
+
+        cp subtrace-linux-amd64 subtrace-linux-arm64 ./etc/python/subtrace/
+        cd ./etc/python
+        make wheel
+        sha256sum dist/*
+        TWINE_USERNAME=__token__ TWINE_PASSWORD=${SUBTRACE_PYPI_API_TOKEN} make upload
+        cd ..
 
   worker-docker:
     runs-on: ubuntu-24.04
