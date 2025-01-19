@@ -57,7 +57,9 @@ jobs:
               --data-binary "@${file}"
         done
 
+        sudo apt update && sudo apt install -y python3-build
         cp subtrace-linux-amd64 subtrace-linux-arm64 ./etc/python/subtrace/
+        sha256sum ./etc/python/subtrace/subtrace-*
         cd ./etc/python
         make wheel
         sha256sum dist/*
