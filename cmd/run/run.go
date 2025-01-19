@@ -480,6 +480,8 @@ func (c *Command) entrypointChild(ctx context.Context, args []string) error {
 		return nil
 	}
 
+	environ := append(os.Environ(), "SUBTRACE_RUN=1")
+
 	var syscalls []int
 	for nr, handler := range process.Handlers {
 		if handler != nil {
@@ -504,7 +506,7 @@ func (c *Command) entrypointChild(ctx context.Context, args []string) error {
 	unix.Close(fd)
 
 	slog.Debug("child: calling execve", "argv0", args[0], "abspath", abspath)
-	if err := unix.Exec(abspath, args, os.Environ()); err != nil {
+	if err := unix.Exec(abspath, args, environ); err != nil {
 		return fmt.Errorf("execve: %w", err)
 	}
 	panic("unreachable")
