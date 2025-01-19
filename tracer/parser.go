@@ -207,24 +207,26 @@ func (p *Parser) Finish() error {
 		go p.global.Devtools.Send(b)
 	}
 
-	var sendReflector, sendTunneler bool
-	switch strings.ToLower(os.Getenv("SUBTRACE_REFLECTOR")) {
-	case "1", "t", "true", "y", "yes":
-		sendReflector, sendTunneler = true, false
-	case "0", "f", "false", "n", "no":
-		sendReflector, sendTunneler = false, true
-	case "both":
-		sendReflector, sendTunneler = true, true
-	default:
-		sendReflector, sendTunneler = true, false
-	}
-	if sendReflector {
-		if err := p.sendReflector(b); err != nil {
-			slog.Error("failed to publish event to reflector", "eventID", p.eventID, "err", err)
+	if os.Getenv("SUBTRACE_TOKEN") != "" {
+		var sendReflector, sendTunneler bool
+		switch strings.ToLower(os.Getenv("SUBTRACE_REFLECTOR")) {
+		case "1", "t", "true", "y", "yes":
+			sendReflector, sendTunneler = true, false
+		case "0", "f", "false", "n", "no":
+			sendReflector, sendTunneler = false, true
+		case "both":
+			sendReflector, sendTunneler = true, true
+		default:
+			sendReflector, sendTunneler = true, false
 		}
-	}
-	if sendTunneler {
-		p.sendTunneler(b)
+		if sendReflector {
+			if err := p.sendReflector(b); err != nil {
+				slog.Error("failed to publish event to reflector", "eventID", p.eventID, "err", err)
+			}
+		}
+		if sendTunneler {
+			p.sendTunneler(b)
+		}
 	}
 	return nil
 }
