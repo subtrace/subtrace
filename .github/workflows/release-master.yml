@@ -63,7 +63,7 @@ jobs:
         cd ./etc/python
         make wheel
         sha256sum dist/*
-        TWINE_USERNAME=__token__ TWINE_PASSWORD=${SUBTRACE_PYPI_API_TOKEN} make upload
+        TWINE_USERNAME=__token__ TWINE_PASSWORD=${{ secrets.SUBTRACE_PYPI_API_TOKEN }} make upload
         cd ..
 
   worker-docker:
