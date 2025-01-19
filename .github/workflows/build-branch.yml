@@ -30,7 +30,7 @@ jobs:
 
         for os in linux darwin; do
           for arch in amd64 arm64; do
-            echo "GOOS=${os} GOARCH=${arch} go build"
+            echo "GOOS=${os} GOARCH=${arch}"
             GOOS=${os} GOARCH=${arch} time make subtrace
             mv subtrace subtrace-${os}-${arch}
           done
