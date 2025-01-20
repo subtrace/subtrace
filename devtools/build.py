@@ -5,11 +5,11 @@ import base64, mimetypes, os, re, subprocess, sys
 
 def exfil_classes():
     exfil = {
-        "core/sdk/NetworkRequest.js":  ["NetworkRequest"],
-        "models/har/HARFormat.js":     ["HARLog", "HAREntry"],
-        "models/har/Importer.js":      ["Importer"],
-        "models/logs/NetworkLog.js":   ["NetworkLog"],
-        "ui/legacy/InspectorView.js":  ["InspectorView"],
+        "entrypoints/main/MainImpl.ts": ["Root", "Common", "SDK", "UI", "Logs"],
+        "core/sdk/NetworkRequest.js":   ["NetworkRequest"],
+        "models/har/HARFormat.js":      ["HARLog", "HAREntry"],
+        "models/har/Importer.js":       ["Importer"],
+        "models/logs/NetworkLog.js":    ["NetworkLog"],
     }
 
     for path, arr in exfil.items():
