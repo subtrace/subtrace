@@ -5,7 +5,7 @@ import base64, mimetypes, os, re, subprocess, sys
 
 def exfil_classes():
     exfil = {
-        "entrypoints/main/MainImpl.ts": ["Root", "Common", "SDK", "UI", "Logs"],
+        "entrypoints/main/MainImpl.js": ["Root", "Common", "SDK", "UI", "Logs"],
         "core/sdk/NetworkRequest.js":   ["NetworkRequest"],
         "models/har/HARFormat.js":      ["HARLog", "HAREntry"],
         "models/har/Importer.js":       ["Importer"],
