@@ -10,6 +10,7 @@ def exfil_classes():
         "models/har/HARFormat.js":      ["HARLog", "HAREntry"],
         "models/har/Importer.js":       ["Importer"],
         "models/logs/NetworkLog.js":    ["NetworkLog"],
+        "ui/legacy/InspectorView.js":   ["InspectorView"],
     }
 
     for path, arr in exfil.items():
