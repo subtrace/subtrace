@@ -64,7 +64,15 @@ jobs:
         make wheel
         sha256sum dist/*
         TWINE_USERNAME=__token__ TWINE_PASSWORD=${{ secrets.SUBTRACE_PYPI_API_TOKEN }} make upload
-        cd ..
+        cd ../..
+
+        cd ./etc/js
+        make clean download build
+        sha256sum ./etc/js/subtrace/subtrace-*
+        npm version $(printf "0.0.%03d" "$(git log --oneline | wc -l)")
+        npm set //registry.npmjs.org/:_authToken=${{ secrets.SUBTRACE_NPM_PUBLISH_TOKEN }}
+        npm publish
+        cd ../..
 
   worker-docker:
     runs-on: ubuntu-24.04
