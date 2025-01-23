@@ -1,0 +1,20 @@
+{
+  "name": "subtrace",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "JS package for Subtrace",
+  "main": "subtrace.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/subtrace/subtrace.git"
+  },
+  "devDependencies": {
+    "express": "4.21.2"
+  },
+  "comments": {
+    "devDependencies": "Used only for testing",
+    "version": "Set during publish time"
+  },
+  "scripts": {},
+  "gypfile": true
+}

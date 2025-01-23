@@ -1,0 +1,10 @@
+node_modules/
+test/
+
+# Include only the binary in the package, and nothing else from the build folder.
+# The npm registry does not accept packages that have hard links in them, and the
+# build process with gyp ends up generating hard links. See this issue:
+# https://github.com/npm/cli/issues/3835
+build/
+build/**
+!build/Release/execve.node
