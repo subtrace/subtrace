@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,11 +36,12 @@ type Command struct {
 	ffcli.Command
 	flags struct {
 		config   string
-		listen   string
-		remote   string
 		devtools string
 		log      *bool
 	}
+
+	from int
+	to   int
 
 	global *global.Global
 }
@@ -53,8 +55,6 @@ func NewCommand() *ffcli.Command {
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.FlagSet.StringVar(&c.flags.config, "config", "", "configuration file path")
-	c.FlagSet.StringVar(&c.flags.listen, "listen", "", "local address to listen on")
-	c.FlagSet.StringVar(&c.flags.remote, "remote", "", "remote address to forward requests to")
 	c.FlagSet.StringVar(&c.flags.devtools, "devtools", "/subtrace", "path to serve the chrome devtools bundle on")
 	c.flags.log = c.FlagSet.Bool("log", false, "if true, log trace events to stderr")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
@@ -68,14 +68,24 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	logging.Init()
 	slog.Debug("starting subtrace proxy", "release", version.Release, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
 
-	if c.flags.listen == "" && c.flags.remote == "" {
-		fmt.Fprintf(os.Stderr, "error: missing -listen and -remote\n")
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "error: missing FROM:TO port numbers\n")
 		return flag.ErrHelp
-	} else if c.flags.listen == "" {
-		fmt.Fprintf(os.Stderr, "error: missing -listen\n")
+	}
+
+	from, to, ok := strings.Cut(args[0], ":")
+	if !ok {
+		fmt.Fprintf(os.Stderr, "error: invalid FROM:TO port format\n")
 		return flag.ErrHelp
-	} else if c.flags.remote == "" {
-		fmt.Fprintf(os.Stderr, "error: missing -remote\n")
+	}
+
+	var err error
+	if c.from, err = strconv.Atoi(from); err != nil {
+		fmt.Fprintf(os.Stderr, "error: invalid FROM port: parse as number: %v\n", err)
+		return flag.ErrHelp
+	}
+	if c.to, err = strconv.Atoi(to); err != nil {
+		fmt.Fprintf(os.Stderr, "error: invalid FROM port: parse as number: %v\n", err)
 		return flag.ErrHelp
 	}
 
@@ -146,7 +156,8 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 }
 
 func (c *Command) start(ctx context.Context) error {
-	lis, err := net.Listen("tcp", c.flags.listen)
+	addr := fmt.Sprintf(":%d", c.from)
+	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -158,26 +169,11 @@ func (c *Command) start(ctx context.Context) error {
 		return new(net.Dialer).DialContext(ctx, network, addr)
 	})
 
-	slog.Info("listening for new connections", "addr", c.flags.listen)
+	slog.Info("listening for new connections", "addr", addr)
 	if err := p.Serve(lis); err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}
 	return nil
-}
-
-func (c *Command) getRemotePrefix() string {
-	if strings.HasPrefix(c.flags.remote, "http://") || strings.HasPrefix(c.flags.remote, "https://") {
-		return c.flags.remote
-	}
-	return "http://" + c.flags.remote
-}
-
-func (c *Command) getRemoteHost() string {
-	u, err := url.Parse(c.getRemotePrefix())
-	if err != nil {
-		return ""
-	}
-	return u.Host
 }
 
 func (c *Command) ModifyRequest(req *http.Request) error {
@@ -196,13 +192,12 @@ func (c *Command) ModifyRequest(req *http.Request) error {
 		suffix = "/" + suffix
 	}
 
-	u, err := url.Parse(c.getRemotePrefix() + suffix)
+	u, err := url.Parse(fmt.Sprintf("http://0.0.0.0:%d", c.to) + suffix)
 	if err != nil {
 		return fmt.Errorf("parse remote addr: %w", err)
 	}
 
 	req.URL = u
-	req.Host = c.getRemoteHost()
 	req.Header.Del("accept-encoding")
 	return nil
 }
