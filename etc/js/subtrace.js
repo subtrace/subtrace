@@ -30,7 +30,7 @@ function reExecWithSubtrace() {
 
   execve.execve(
     subtraceExecutableName,
-    [subtraceExecutableName, "run", "-log=true", "--", ...Process.argv],
+    [subtraceExecutableName, "run", "--", ...Process.argv],
     []
   );
 }
