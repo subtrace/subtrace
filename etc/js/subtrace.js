@@ -35,7 +35,6 @@ function reExecWithSubtrace() {
   );
 }
 
-if (OS.arch().trim().toLocaleLowerCase() === "linux") {
+if (OS.platform().trim().toLocaleLowerCase() === "linux") {
   reExecWithSubtrace();
 }
-
