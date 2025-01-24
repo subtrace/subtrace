@@ -61,6 +61,14 @@ func (p *publisher) dialSingle(ctx context.Context) (*websocket.Conn, string, er
 		return nil, "", fmt.Errorf("dial: %w", err)
 	}
 
+	go func() {
+		for {
+			if _, _, err := conn.Read(context.Background()); err != nil {
+				return
+			}
+		}
+	}()
+
 	return conn, u.Query().Get("url"), nil
 }
 
