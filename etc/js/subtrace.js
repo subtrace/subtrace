@@ -37,4 +37,14 @@ function reExecWithSubtrace() {
 
 if (OS.platform().trim().toLocaleLowerCase() === "linux") {
   reExecWithSubtrace();
+} else {
+  const yellowEscapeCode = "\x1b[33m%s\x1b[0m";
+  console.warn(
+    yellowEscapeCode,
+    "The subtrace npm package is currently only supported on Linux."
+  );
+  console.warn(
+    yellowEscapeCode,
+    "Importing subtrace here is a no-op, and will do nothing."
+  );
 }
