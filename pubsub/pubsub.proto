@@ -61,11 +61,23 @@ message SetSubscriberConfig {
   }
 }
 
+message AnnounceStats {
+  message V1 {
+    uint64 num_publishers = 1;
+    uint64 num_subscribers = 2;
+  }
+
+  oneof concrete {
+    V1 concrete_v1 = 1;
+  }
+}
+
 message Message {
   message V1 {
     oneof underlying {
       Event event = 1;
       SetSubscriberConfig set_subscriber_config = 2;
+      AnnounceStats announce_stats = 3;
     }
   }
 

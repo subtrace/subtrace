@@ -232,6 +232,73 @@ type SetSubscriberConfig_ConcreteV1 struct {
 
 func (*SetSubscriberConfig_ConcreteV1) isSetSubscriberConfig_Concrete() {}
 
+type AnnounceStats struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Types that are assignable to Concrete:
+	//
+	//	*AnnounceStats_ConcreteV1
+	Concrete isAnnounceStats_Concrete `protobuf_oneof:"concrete"`
+}
+
+func (x *AnnounceStats) Reset() {
+	*x = AnnounceStats{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_pubsub_pubsub_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *AnnounceStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnnounceStats) ProtoMessage() {}
+
+func (x *AnnounceStats) ProtoReflect() protoreflect.Message {
+	mi := &file_pubsub_pubsub_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnnounceStats.ProtoReflect.Descriptor instead.
+func (*AnnounceStats) Descriptor() ([]byte, []int) {
+	return file_pubsub_pubsub_proto_rawDescGZIP(), []int{4}
+}
+
+func (m *AnnounceStats) GetConcrete() isAnnounceStats_Concrete {
+	if m != nil {
+		return m.Concrete
+	}
+	return nil
+}
+
+func (x *AnnounceStats) GetConcreteV1() *AnnounceStats_V1 {
+	if x, ok := x.GetConcrete().(*AnnounceStats_ConcreteV1); ok {
+		return x.ConcreteV1
+	}
+	return nil
+}
+
+type isAnnounceStats_Concrete interface {
+	isAnnounceStats_Concrete()
+}
+
+type AnnounceStats_ConcreteV1 struct {
+	ConcreteV1 *AnnounceStats_V1 `protobuf:"bytes,1,opt,name=concrete_v1,json=concreteV1,proto3,oneof"`
+}
+
+func (*AnnounceStats_ConcreteV1) isAnnounceStats_Concrete() {}
+
 type Message struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -246,7 +313,7 @@ type Message struct {
 func (x *Message) Reset() {
 	*x = Message{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pubsub_pubsub_proto_msgTypes[4]
+		mi := &file_pubsub_pubsub_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -259,7 +326,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_pubsub_pubsub_proto_msgTypes[4]
+	mi := &file_pubsub_pubsub_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -272,7 +339,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_pubsub_pubsub_proto_rawDescGZIP(), []int{4}
+	return file_pubsub_pubsub_proto_rawDescGZIP(), []int{5}
 }
 
 func (m *Message) GetConcrete() isMessage_Concrete {
@@ -308,7 +375,7 @@ type JoinPublisher_Request struct {
 func (x *JoinPublisher_Request) Reset() {
 	*x = JoinPublisher_Request{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pubsub_pubsub_proto_msgTypes[5]
+		mi := &file_pubsub_pubsub_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -321,7 +388,7 @@ func (x *JoinPublisher_Request) String() string {
 func (*JoinPublisher_Request) ProtoMessage() {}
 
 func (x *JoinPublisher_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_pubsub_pubsub_proto_msgTypes[5]
+	mi := &file_pubsub_pubsub_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -349,7 +416,7 @@ type JoinPublisher_Response struct {
 func (x *JoinPublisher_Response) Reset() {
 	*x = JoinPublisher_Response{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pubsub_pubsub_proto_msgTypes[6]
+		mi := &file_pubsub_pubsub_proto_msgTypes[7]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -362,7 +429,7 @@ func (x *JoinPublisher_Response) String() string {
 func (*JoinPublisher_Response) ProtoMessage() {}
 
 func (x *JoinPublisher_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_pubsub_pubsub_proto_msgTypes[6]
+	mi := &file_pubsub_pubsub_proto_msgTypes[7]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -403,7 +470,7 @@ type JoinSubscriber_Request struct {
 func (x *JoinSubscriber_Request) Reset() {
 	*x = JoinSubscriber_Request{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pubsub_pubsub_proto_msgTypes[7]
+		mi := &file_pubsub_pubsub_proto_msgTypes[8]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -416,7 +483,7 @@ func (x *JoinSubscriber_Request) String() string {
 func (*JoinSubscriber_Request) ProtoMessage() {}
 
 func (x *JoinSubscriber_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_pubsub_pubsub_proto_msgTypes[7]
+	mi := &file_pubsub_pubsub_proto_msgTypes[8]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -451,7 +518,7 @@ type JoinSubscriber_Response struct {
 func (x *JoinSubscriber_Response) Reset() {
 	*x = JoinSubscriber_Response{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pubsub_pubsub_proto_msgTypes[8]
+		mi := &file_pubsub_pubsub_proto_msgTypes[9]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -464,7 +531,7 @@ func (x *JoinSubscriber_Response) String() string {
 func (*JoinSubscriber_Response) ProtoMessage() {}
 
 func (x *JoinSubscriber_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_pubsub_pubsub_proto_msgTypes[8]
+	mi := &file_pubsub_pubsub_proto_msgTypes[9]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -506,7 +573,7 @@ type Event_V1 struct {
 func (x *Event_V1) Reset() {
 	*x = Event_V1{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pubsub_pubsub_proto_msgTypes[9]
+		mi := &file_pubsub_pubsub_proto_msgTypes[10]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -519,7 +586,7 @@ func (x *Event_V1) String() string {
 func (*Event_V1) ProtoMessage() {}
 
 func (x *Event_V1) ProtoReflect() protoreflect.Message {
-	mi := &file_pubsub_pubsub_proto_msgTypes[9]
+	mi := &file_pubsub_pubsub_proto_msgTypes[10]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -564,7 +631,7 @@ type SetSubscriberConfig_V1 struct {
 func (x *SetSubscriberConfig_V1) Reset() {
 	*x = SetSubscriberConfig_V1{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pubsub_pubsub_proto_msgTypes[11]
+		mi := &file_pubsub_pubsub_proto_msgTypes[12]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -577,7 +644,7 @@ func (x *SetSubscriberConfig_V1) String() string {
 func (*SetSubscriberConfig_V1) ProtoMessage() {}
 
 func (x *SetSubscriberConfig_V1) ProtoReflect() protoreflect.Message {
-	mi := &file_pubsub_pubsub_proto_msgTypes[11]
+	mi := &file_pubsub_pubsub_proto_msgTypes[12]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -642,7 +709,7 @@ type SetSubscriberConfig_V1_Call struct {
 func (x *SetSubscriberConfig_V1_Call) Reset() {
 	*x = SetSubscriberConfig_V1_Call{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pubsub_pubsub_proto_msgTypes[12]
+		mi := &file_pubsub_pubsub_proto_msgTypes[13]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -655,7 +722,7 @@ func (x *SetSubscriberConfig_V1_Call) String() string {
 func (*SetSubscriberConfig_V1_Call) ProtoMessage() {}
 
 func (x *SetSubscriberConfig_V1_Call) ProtoReflect() protoreflect.Message {
-	mi := &file_pubsub_pubsub_proto_msgTypes[12]
+	mi := &file_pubsub_pubsub_proto_msgTypes[13]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -697,7 +764,7 @@ type SetSubscriberConfig_V1_Result struct {
 func (x *SetSubscriberConfig_V1_Result) Reset() {
 	*x = SetSubscriberConfig_V1_Result{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pubsub_pubsub_proto_msgTypes[13]
+		mi := &file_pubsub_pubsub_proto_msgTypes[14]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -710,7 +777,7 @@ func (x *SetSubscriberConfig_V1_Result) String() string {
 func (*SetSubscriberConfig_V1_Result) ProtoMessage() {}
 
 func (x *SetSubscriberConfig_V1_Result) ProtoReflect() protoreflect.Message {
-	mi := &file_pubsub_pubsub_proto_msgTypes[13]
+	mi := &file_pubsub_pubsub_proto_msgTypes[14]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -740,6 +807,61 @@ func (x *SetSubscriberConfig_V1_Result) GetError() string {
 	return ""
 }
 
+type AnnounceStats_V1 struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	NumPublishers  uint64 `protobuf:"varint,1,opt,name=num_publishers,json=numPublishers,proto3" json:"num_publishers,omitempty"`
+	NumSubscribers uint64 `protobuf:"varint,2,opt,name=num_subscribers,json=numSubscribers,proto3" json:"num_subscribers,omitempty"`
+}
+
+func (x *AnnounceStats_V1) Reset() {
+	*x = AnnounceStats_V1{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_pubsub_pubsub_proto_msgTypes[15]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *AnnounceStats_V1) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnnounceStats_V1) ProtoMessage() {}
+
+func (x *AnnounceStats_V1) ProtoReflect() protoreflect.Message {
+	mi := &file_pubsub_pubsub_proto_msgTypes[15]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnnounceStats_V1.ProtoReflect.Descriptor instead.
+func (*AnnounceStats_V1) Descriptor() ([]byte, []int) {
+	return file_pubsub_pubsub_proto_rawDescGZIP(), []int{4, 0}
+}
+
+func (x *AnnounceStats_V1) GetNumPublishers() uint64 {
+	if x != nil {
+		return x.NumPublishers
+	}
+	return 0
+}
+
+func (x *AnnounceStats_V1) GetNumSubscribers() uint64 {
+	if x != nil {
+		return x.NumSubscribers
+	}
+	return 0
+}
+
 type Message_V1 struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -749,13 +871,14 @@ type Message_V1 struct {
 	//
 	//	*Message_V1_Event
 	//	*Message_V1_SetSubscriberConfig
+	//	*Message_V1_AnnounceStats
 	Underlying isMessage_V1_Underlying `protobuf_oneof:"underlying"`
 }
 
 func (x *Message_V1) Reset() {
 	*x = Message_V1{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_pubsub_pubsub_proto_msgTypes[14]
+		mi := &file_pubsub_pubsub_proto_msgTypes[16]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -768,7 +891,7 @@ func (x *Message_V1) String() string {
 func (*Message_V1) ProtoMessage() {}
 
 func (x *Message_V1) ProtoReflect() protoreflect.Message {
-	mi := &file_pubsub_pubsub_proto_msgTypes[14]
+	mi := &file_pubsub_pubsub_proto_msgTypes[16]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -781,7 +904,7 @@ func (x *Message_V1) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message_V1.ProtoReflect.Descriptor instead.
 func (*Message_V1) Descriptor() ([]byte, []int) {
-	return file_pubsub_pubsub_proto_rawDescGZIP(), []int{4, 0}
+	return file_pubsub_pubsub_proto_rawDescGZIP(), []int{5, 0}
 }
 
 func (m *Message_V1) GetUnderlying() isMessage_V1_Underlying {
@@ -805,6 +928,13 @@ func (x *Message_V1) GetSetSubscriberConfig() *SetSubscriberConfig {
 	return nil
 }
 
+func (x *Message_V1) GetAnnounceStats() *AnnounceStats {
+	if x, ok := x.GetUnderlying().(*Message_V1_AnnounceStats); ok {
+		return x.AnnounceStats
+	}
+	return nil
+}
+
 type isMessage_V1_Underlying interface {
 	isMessage_V1_Underlying()
 }
@@ -817,9 +947,15 @@ type Message_V1_SetSubscriberConfig struct {
 	SetSubscriberConfig *SetSubscriberConfig `protobuf:"bytes,2,opt,name=set_subscriber_config,json=setSubscriberConfig,proto3,oneof"`
 }
 
+type Message_V1_AnnounceStats struct {
+	AnnounceStats *AnnounceStats `protobuf:"bytes,3,opt,name=announce_stats,json=announceStats,proto3,oneof"`
+}
+
 func (*Message_V1_Event) isMessage_V1_Underlying() {}
 
 func (*Message_V1_SetSubscriberConfig) isMessage_V1_Underlying() {}
+
+func (*Message_V1_AnnounceStats) isMessage_V1_Underlying() {}
 
 var File_pubsub_pubsub_proto protoreflect.FileDescriptor
 
@@ -885,24 +1021,40 @@ var file_pubsub_pubsub_proto_rawDesc = []byte{
 	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x48, 0x00, 0x52, 0x05, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x88,
 	0x01, 0x01, 0x42, 0x08, 0x0a, 0x06, 0x5f, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x42, 0x06, 0x0a, 0x04,
 	0x74, 0x79, 0x70, 0x65, 0x42, 0x0a, 0x0a, 0x08, 0x63, 0x6f, 0x6e, 0x63, 0x72, 0x65, 0x74, 0x65,
-	0x22, 0xf6, 0x01, 0x0a, 0x07, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x3e, 0x0a, 0x0b,
-	0x63, 0x6f, 0x6e, 0x63, 0x72, 0x65, 0x74, 0x65, 0x5f, 0x76, 0x31, 0x18, 0x01, 0x20, 0x01, 0x28,
-	0x0b, 0x32, 0x1b, 0x2e, 0x73, 0x75, 0x62, 0x74, 0x72, 0x61, 0x63, 0x65, 0x2e, 0x70, 0x75, 0x62,
-	0x73, 0x75, 0x62, 0x2e, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x2e, 0x56, 0x31, 0x48, 0x00,
-	0x52, 0x0a, 0x63, 0x6f, 0x6e, 0x63, 0x72, 0x65, 0x74, 0x65, 0x56, 0x31, 0x1a, 0x9e, 0x01, 0x0a,
-	0x02, 0x56, 0x31, 0x12, 0x2e, 0x0a, 0x05, 0x65, 0x76, 0x65, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01,
-	0x28, 0x0b, 0x32, 0x16, 0x2e, 0x73, 0x75, 0x62, 0x74, 0x72, 0x61, 0x63, 0x65, 0x2e, 0x70, 0x75,
-	0x62, 0x73, 0x75, 0x62, 0x2e, 0x45, 0x76, 0x65, 0x6e, 0x74, 0x48, 0x00, 0x52, 0x05, 0x65, 0x76,
-	0x65, 0x6e, 0x74, 0x12, 0x5a, 0x0a, 0x15, 0x73, 0x65, 0x74, 0x5f, 0x73, 0x75, 0x62, 0x73, 0x63,
-	0x72, 0x69, 0x62, 0x65, 0x72, 0x5f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x18, 0x02, 0x20, 0x01,
-	0x28, 0x0b, 0x32, 0x24, 0x2e, 0x73, 0x75, 0x62, 0x74, 0x72, 0x61, 0x63, 0x65, 0x2e, 0x70, 0x75,
-	0x62, 0x73, 0x75, 0x62, 0x2e, 0x53, 0x65, 0x74, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x62,
-	0x65, 0x72, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x48, 0x00, 0x52, 0x13, 0x73, 0x65, 0x74, 0x53,
-	0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x62, 0x65, 0x72, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x42,
-	0x0c, 0x0a, 0x0a, 0x75, 0x6e, 0x64, 0x65, 0x72, 0x6c, 0x79, 0x69, 0x6e, 0x67, 0x42, 0x0a, 0x0a,
-	0x08, 0x63, 0x6f, 0x6e, 0x63, 0x72, 0x65, 0x74, 0x65, 0x42, 0x15, 0x5a, 0x13, 0x73, 0x75, 0x62,
-	0x74, 0x72, 0x61, 0x63, 0x65, 0x2e, 0x64, 0x65, 0x76, 0x2f, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x22, 0xb7, 0x01, 0x0a, 0x0d, 0x41, 0x6e, 0x6e, 0x6f, 0x75, 0x6e, 0x63, 0x65, 0x53, 0x74, 0x61,
+	0x74, 0x73, 0x12, 0x44, 0x0a, 0x0b, 0x63, 0x6f, 0x6e, 0x63, 0x72, 0x65, 0x74, 0x65, 0x5f, 0x76,
+	0x31, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x21, 0x2e, 0x73, 0x75, 0x62, 0x74, 0x72, 0x61,
+	0x63, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x41, 0x6e, 0x6e, 0x6f, 0x75, 0x6e,
+	0x63, 0x65, 0x53, 0x74, 0x61, 0x74, 0x73, 0x2e, 0x56, 0x31, 0x48, 0x00, 0x52, 0x0a, 0x63, 0x6f,
+	0x6e, 0x63, 0x72, 0x65, 0x74, 0x65, 0x56, 0x31, 0x1a, 0x54, 0x0a, 0x02, 0x56, 0x31, 0x12, 0x25,
+	0x0a, 0x0e, 0x6e, 0x75, 0x6d, 0x5f, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x65, 0x72, 0x73,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x04, 0x52, 0x0d, 0x6e, 0x75, 0x6d, 0x50, 0x75, 0x62, 0x6c, 0x69,
+	0x73, 0x68, 0x65, 0x72, 0x73, 0x12, 0x27, 0x0a, 0x0f, 0x6e, 0x75, 0x6d, 0x5f, 0x73, 0x75, 0x62,
+	0x73, 0x63, 0x72, 0x69, 0x62, 0x65, 0x72, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x52, 0x0e,
+	0x6e, 0x75, 0x6d, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x62, 0x65, 0x72, 0x73, 0x42, 0x0a,
+	0x0a, 0x08, 0x63, 0x6f, 0x6e, 0x63, 0x72, 0x65, 0x74, 0x65, 0x22, 0xbf, 0x02, 0x0a, 0x07, 0x4d,
+	0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x3e, 0x0a, 0x0b, 0x63, 0x6f, 0x6e, 0x63, 0x72, 0x65,
+	0x74, 0x65, 0x5f, 0x76, 0x31, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1b, 0x2e, 0x73, 0x75,
+	0x62, 0x74, 0x72, 0x61, 0x63, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x4d, 0x65,
+	0x73, 0x73, 0x61, 0x67, 0x65, 0x2e, 0x56, 0x31, 0x48, 0x00, 0x52, 0x0a, 0x63, 0x6f, 0x6e, 0x63,
+	0x72, 0x65, 0x74, 0x65, 0x56, 0x31, 0x1a, 0xe7, 0x01, 0x0a, 0x02, 0x56, 0x31, 0x12, 0x2e, 0x0a,
+	0x05, 0x65, 0x76, 0x65, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x16, 0x2e, 0x73,
+	0x75, 0x62, 0x74, 0x72, 0x61, 0x63, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x45,
+	0x76, 0x65, 0x6e, 0x74, 0x48, 0x00, 0x52, 0x05, 0x65, 0x76, 0x65, 0x6e, 0x74, 0x12, 0x5a, 0x0a,
+	0x15, 0x73, 0x65, 0x74, 0x5f, 0x73, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x62, 0x65, 0x72, 0x5f,
+	0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x24, 0x2e, 0x73,
+	0x75, 0x62, 0x74, 0x72, 0x61, 0x63, 0x65, 0x2e, 0x70, 0x75, 0x62, 0x73, 0x75, 0x62, 0x2e, 0x53,
+	0x65, 0x74, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x62, 0x65, 0x72, 0x43, 0x6f, 0x6e, 0x66,
+	0x69, 0x67, 0x48, 0x00, 0x52, 0x13, 0x73, 0x65, 0x74, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69,
+	0x62, 0x65, 0x72, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x47, 0x0a, 0x0e, 0x61, 0x6e, 0x6e,
+	0x6f, 0x75, 0x6e, 0x63, 0x65, 0x5f, 0x73, 0x74, 0x61, 0x74, 0x73, 0x18, 0x03, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x1e, 0x2e, 0x73, 0x75, 0x62, 0x74, 0x72, 0x61, 0x63, 0x65, 0x2e, 0x70, 0x75, 0x62,
+	0x73, 0x75, 0x62, 0x2e, 0x41, 0x6e, 0x6e, 0x6f, 0x75, 0x6e, 0x63, 0x65, 0x53, 0x74, 0x61, 0x74,
+	0x73, 0x48, 0x00, 0x52, 0x0d, 0x61, 0x6e, 0x6e, 0x6f, 0x75, 0x6e, 0x63, 0x65, 0x53, 0x74, 0x61,
+	0x74, 0x73, 0x42, 0x0c, 0x0a, 0x0a, 0x75, 0x6e, 0x64, 0x65, 0x72, 0x6c, 0x79, 0x69, 0x6e, 0x67,
+	0x42, 0x0a, 0x0a, 0x08, 0x63, 0x6f, 0x6e, 0x63, 0x72, 0x65, 0x74, 0x65, 0x42, 0x15, 0x5a, 0x13,
+	0x73, 0x75, 0x62, 0x74, 0x72, 0x61, 0x63, 0x65, 0x2e, 0x64, 0x65, 0x76, 0x2f, 0x70, 0x75, 0x62,
+	0x73, 0x75, 0x62, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -917,38 +1069,42 @@ func file_pubsub_pubsub_proto_rawDescGZIP() []byte {
 	return file_pubsub_pubsub_proto_rawDescData
 }
 
-var file_pubsub_pubsub_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_pubsub_pubsub_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_pubsub_pubsub_proto_goTypes = []any{
 	(*JoinPublisher)(nil),                 // 0: subtrace.pubsub.JoinPublisher
 	(*JoinSubscriber)(nil),                // 1: subtrace.pubsub.JoinSubscriber
 	(*Event)(nil),                         // 2: subtrace.pubsub.Event
 	(*SetSubscriberConfig)(nil),           // 3: subtrace.pubsub.SetSubscriberConfig
-	(*Message)(nil),                       // 4: subtrace.pubsub.Message
-	(*JoinPublisher_Request)(nil),         // 5: subtrace.pubsub.JoinPublisher.Request
-	(*JoinPublisher_Response)(nil),        // 6: subtrace.pubsub.JoinPublisher.Response
-	(*JoinSubscriber_Request)(nil),        // 7: subtrace.pubsub.JoinSubscriber.Request
-	(*JoinSubscriber_Response)(nil),       // 8: subtrace.pubsub.JoinSubscriber.Response
-	(*Event_V1)(nil),                      // 9: subtrace.pubsub.Event.V1
-	nil,                                   // 10: subtrace.pubsub.Event.V1.TagsEntry
-	(*SetSubscriberConfig_V1)(nil),        // 11: subtrace.pubsub.SetSubscriberConfig.V1
-	(*SetSubscriberConfig_V1_Call)(nil),   // 12: subtrace.pubsub.SetSubscriberConfig.V1.Call
-	(*SetSubscriberConfig_V1_Result)(nil), // 13: subtrace.pubsub.SetSubscriberConfig.V1.Result
-	(*Message_V1)(nil),                    // 14: subtrace.pubsub.Message.V1
+	(*AnnounceStats)(nil),                 // 4: subtrace.pubsub.AnnounceStats
+	(*Message)(nil),                       // 5: subtrace.pubsub.Message
+	(*JoinPublisher_Request)(nil),         // 6: subtrace.pubsub.JoinPublisher.Request
+	(*JoinPublisher_Response)(nil),        // 7: subtrace.pubsub.JoinPublisher.Response
+	(*JoinSubscriber_Request)(nil),        // 8: subtrace.pubsub.JoinSubscriber.Request
+	(*JoinSubscriber_Response)(nil),       // 9: subtrace.pubsub.JoinSubscriber.Response
+	(*Event_V1)(nil),                      // 10: subtrace.pubsub.Event.V1
+	nil,                                   // 11: subtrace.pubsub.Event.V1.TagsEntry
+	(*SetSubscriberConfig_V1)(nil),        // 12: subtrace.pubsub.SetSubscriberConfig.V1
+	(*SetSubscriberConfig_V1_Call)(nil),   // 13: subtrace.pubsub.SetSubscriberConfig.V1.Call
+	(*SetSubscriberConfig_V1_Result)(nil), // 14: subtrace.pubsub.SetSubscriberConfig.V1.Result
+	(*AnnounceStats_V1)(nil),              // 15: subtrace.pubsub.AnnounceStats.V1
+	(*Message_V1)(nil),                    // 16: subtrace.pubsub.Message.V1
 }
 var file_pubsub_pubsub_proto_depIdxs = []int32{
-	9,  // 0: subtrace.pubsub.Event.concrete_v1:type_name -> subtrace.pubsub.Event.V1
-	11, // 1: subtrace.pubsub.SetSubscriberConfig.concrete_v1:type_name -> subtrace.pubsub.SetSubscriberConfig.V1
-	14, // 2: subtrace.pubsub.Message.concrete_v1:type_name -> subtrace.pubsub.Message.V1
-	10, // 3: subtrace.pubsub.Event.V1.tags:type_name -> subtrace.pubsub.Event.V1.TagsEntry
-	12, // 4: subtrace.pubsub.SetSubscriberConfig.V1.call:type_name -> subtrace.pubsub.SetSubscriberConfig.V1.Call
-	13, // 5: subtrace.pubsub.SetSubscriberConfig.V1.result:type_name -> subtrace.pubsub.SetSubscriberConfig.V1.Result
-	2,  // 6: subtrace.pubsub.Message.V1.event:type_name -> subtrace.pubsub.Event
-	3,  // 7: subtrace.pubsub.Message.V1.set_subscriber_config:type_name -> subtrace.pubsub.SetSubscriberConfig
-	8,  // [8:8] is the sub-list for method output_type
-	8,  // [8:8] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	10, // 0: subtrace.pubsub.Event.concrete_v1:type_name -> subtrace.pubsub.Event.V1
+	12, // 1: subtrace.pubsub.SetSubscriberConfig.concrete_v1:type_name -> subtrace.pubsub.SetSubscriberConfig.V1
+	15, // 2: subtrace.pubsub.AnnounceStats.concrete_v1:type_name -> subtrace.pubsub.AnnounceStats.V1
+	16, // 3: subtrace.pubsub.Message.concrete_v1:type_name -> subtrace.pubsub.Message.V1
+	11, // 4: subtrace.pubsub.Event.V1.tags:type_name -> subtrace.pubsub.Event.V1.TagsEntry
+	13, // 5: subtrace.pubsub.SetSubscriberConfig.V1.call:type_name -> subtrace.pubsub.SetSubscriberConfig.V1.Call
+	14, // 6: subtrace.pubsub.SetSubscriberConfig.V1.result:type_name -> subtrace.pubsub.SetSubscriberConfig.V1.Result
+	2,  // 7: subtrace.pubsub.Message.V1.event:type_name -> subtrace.pubsub.Event
+	3,  // 8: subtrace.pubsub.Message.V1.set_subscriber_config:type_name -> subtrace.pubsub.SetSubscriberConfig
+	4,  // 9: subtrace.pubsub.Message.V1.announce_stats:type_name -> subtrace.pubsub.AnnounceStats
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_pubsub_pubsub_proto_init() }
@@ -1006,7 +1162,7 @@ func file_pubsub_pubsub_proto_init() {
 			}
 		}
 		file_pubsub_pubsub_proto_msgTypes[4].Exporter = func(v any, i int) any {
-			switch v := v.(*Message); i {
+			switch v := v.(*AnnounceStats); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1018,7 +1174,7 @@ func file_pubsub_pubsub_proto_init() {
 			}
 		}
 		file_pubsub_pubsub_proto_msgTypes[5].Exporter = func(v any, i int) any {
-			switch v := v.(*JoinPublisher_Request); i {
+			switch v := v.(*Message); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1030,7 +1186,7 @@ func file_pubsub_pubsub_proto_init() {
 			}
 		}
 		file_pubsub_pubsub_proto_msgTypes[6].Exporter = func(v any, i int) any {
-			switch v := v.(*JoinPublisher_Response); i {
+			switch v := v.(*JoinPublisher_Request); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1042,7 +1198,7 @@ func file_pubsub_pubsub_proto_init() {
 			}
 		}
 		file_pubsub_pubsub_proto_msgTypes[7].Exporter = func(v any, i int) any {
-			switch v := v.(*JoinSubscriber_Request); i {
+			switch v := v.(*JoinPublisher_Response); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1054,7 +1210,7 @@ func file_pubsub_pubsub_proto_init() {
 			}
 		}
 		file_pubsub_pubsub_proto_msgTypes[8].Exporter = func(v any, i int) any {
-			switch v := v.(*JoinSubscriber_Response); i {
+			switch v := v.(*JoinSubscriber_Request); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -1066,6 +1222,18 @@ func file_pubsub_pubsub_proto_init() {
 			}
 		}
 		file_pubsub_pubsub_proto_msgTypes[9].Exporter = func(v any, i int) any {
+			switch v := v.(*JoinSubscriber_Response); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_pubsub_pubsub_proto_msgTypes[10].Exporter = func(v any, i int) any {
 			switch v := v.(*Event_V1); i {
 			case 0:
 				return &v.state
@@ -1077,7 +1245,7 @@ func file_pubsub_pubsub_proto_init() {
 				return nil
 			}
 		}
-		file_pubsub_pubsub_proto_msgTypes[11].Exporter = func(v any, i int) any {
+		file_pubsub_pubsub_proto_msgTypes[12].Exporter = func(v any, i int) any {
 			switch v := v.(*SetSubscriberConfig_V1); i {
 			case 0:
 				return &v.state
@@ -1089,7 +1257,7 @@ func file_pubsub_pubsub_proto_init() {
 				return nil
 			}
 		}
-		file_pubsub_pubsub_proto_msgTypes[12].Exporter = func(v any, i int) any {
+		file_pubsub_pubsub_proto_msgTypes[13].Exporter = func(v any, i int) any {
 			switch v := v.(*SetSubscriberConfig_V1_Call); i {
 			case 0:
 				return &v.state
@@ -1101,7 +1269,7 @@ func file_pubsub_pubsub_proto_init() {
 				return nil
 			}
 		}
-		file_pubsub_pubsub_proto_msgTypes[13].Exporter = func(v any, i int) any {
+		file_pubsub_pubsub_proto_msgTypes[14].Exporter = func(v any, i int) any {
 			switch v := v.(*SetSubscriberConfig_V1_Result); i {
 			case 0:
 				return &v.state
@@ -1113,7 +1281,19 @@ func file_pubsub_pubsub_proto_init() {
 				return nil
 			}
 		}
-		file_pubsub_pubsub_proto_msgTypes[14].Exporter = func(v any, i int) any {
+		file_pubsub_pubsub_proto_msgTypes[15].Exporter = func(v any, i int) any {
+			switch v := v.(*AnnounceStats_V1); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_pubsub_pubsub_proto_msgTypes[16].Exporter = func(v any, i int) any {
 			switch v := v.(*Message_V1); i {
 			case 0:
 				return &v.state
@@ -1133,19 +1313,23 @@ func file_pubsub_pubsub_proto_init() {
 		(*SetSubscriberConfig_ConcreteV1)(nil),
 	}
 	file_pubsub_pubsub_proto_msgTypes[4].OneofWrappers = []any{
+		(*AnnounceStats_ConcreteV1)(nil),
+	}
+	file_pubsub_pubsub_proto_msgTypes[5].OneofWrappers = []any{
 		(*Message_ConcreteV1)(nil),
 	}
-	file_pubsub_pubsub_proto_msgTypes[6].OneofWrappers = []any{}
 	file_pubsub_pubsub_proto_msgTypes[7].OneofWrappers = []any{}
 	file_pubsub_pubsub_proto_msgTypes[8].OneofWrappers = []any{}
-	file_pubsub_pubsub_proto_msgTypes[11].OneofWrappers = []any{
+	file_pubsub_pubsub_proto_msgTypes[9].OneofWrappers = []any{}
+	file_pubsub_pubsub_proto_msgTypes[12].OneofWrappers = []any{
 		(*SetSubscriberConfig_V1_Call_)(nil),
 		(*SetSubscriberConfig_V1_Result_)(nil),
 	}
-	file_pubsub_pubsub_proto_msgTypes[13].OneofWrappers = []any{}
-	file_pubsub_pubsub_proto_msgTypes[14].OneofWrappers = []any{
+	file_pubsub_pubsub_proto_msgTypes[14].OneofWrappers = []any{}
+	file_pubsub_pubsub_proto_msgTypes[16].OneofWrappers = []any{
 		(*Message_V1_Event)(nil),
 		(*Message_V1_SetSubscriberConfig)(nil),
+		(*Message_V1_AnnounceStats)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1153,7 +1337,7 @@ func file_pubsub_pubsub_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_pubsub_pubsub_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
