@@ -68,7 +68,7 @@ jobs:
 
         cd ./etc/js
         make clean download build
-        sha256sum ./etc/js/subtrace/subtrace-*
+        sha256sum ./subtrace/subtrace-*
         npm version $(printf "0.0.%03d" "$(git log --oneline | wc -l)")
         npm set //registry.npmjs.org/:_authToken=${{ secrets.SUBTRACE_NPM_PUBLISH_TOKEN }}
         npm publish
