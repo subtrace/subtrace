@@ -50,18 +50,34 @@ func NewCommand() *ffcli.Command {
 	c := new(Command)
 
 	c.Name = "proxy"
-	c.ShortUsage = "subtrace proxy [flags]"
-	c.ShortHelp = "start a reverse proxy"
+	c.ShortUsage = "subtrace proxy [flags] FROM:TO"
+	c.ShortHelp = "proxy all requests from <FROM> port to <TO> port"
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.FlagSet.StringVar(&c.flags.config, "config", "", "configuration file path")
 	c.FlagSet.StringVar(&c.flags.devtools, "devtools", "/subtrace", "path to serve the chrome devtools bundle on")
 	c.flags.log = c.FlagSet.Bool("log", false, "if true, log trace events to stderr")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
+	c.UsageFunc = func(fc *ffcli.Command) string {
+		return ffcli.DefaultUsageFunc(fc) + ExtraHelp()
+	}
 
 	c.Options = []ff.Option{ff.WithEnvVarPrefix("SUBTRACE_PROXY")}
 	c.Exec = c.entrypoint
 	return &c.Command
+}
+
+func ExtraHelp() string {
+	return strings.Join([]string{
+		"",
+		"EXAMPLE",
+		"  subtrace proxy 9000:8000",
+		"",
+		"MORE",
+		"  https://docs.subtrace.dev",
+		"  https://subtrace.dev/discord",
+		"",
+	}, "\n")
 }
 
 func (c *Command) entrypoint(ctx context.Context, args []string) error {
@@ -169,7 +185,7 @@ func (c *Command) start(ctx context.Context) error {
 		return new(net.Dialer).DialContext(ctx, network, addr)
 	})
 
-	slog.Info("listening for new connections", "addr", addr)
+	slog.Debug("listening for new connections", "addr", addr)
 	if err := p.Serve(lis); err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}
