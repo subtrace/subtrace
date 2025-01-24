@@ -11,9 +11,3 @@ clean:
 .PHONY: build
 build:
 	npm install
-
-.PHONY: publish
-publish:
-	version=$(printf "0.0.%03d" "$(git log --oneline | wc -l)")
-	npm version $version
-	npm publish --access public
