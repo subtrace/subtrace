@@ -66,8 +66,9 @@ jobs:
         TWINE_USERNAME=__token__ TWINE_PASSWORD=${{ secrets.SUBTRACE_PYPI_API_TOKEN }} make upload
         cd ../..
 
+        cp subtrace-linux-amd64 subtrace-linux-arm64 ./etc/js/subtrace/
         cd ./etc/js
-        make clean download build
+        make clean build
         sha256sum ./subtrace/subtrace-*
         npm version $(printf "0.0.%03d" "$(git log --oneline | wc -l)")
         npm set //registry.npmjs.org/:_authToken=${{ secrets.SUBTRACE_NPM_PUBLISH_TOKEN }}
