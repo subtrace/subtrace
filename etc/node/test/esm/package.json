@@ -1,0 +1,8 @@
+{
+  "name": "esm",
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "subtrace": "file:../../"
+  }
+}
