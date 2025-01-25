@@ -57,22 +57,30 @@ jobs:
               --data-binary "@${file}"
         done
 
+        for os in linux; do
+          for arch in amd64 arm64; do
+            cp "subtrace-${os}-${arch}" ./etc/python/subtrace
+            cp "subtrace-${os}-${arch}" ./etc/node
+          done
+        done
+
         sudo apt update && sudo apt install -y python3-build twine
-        cp subtrace-linux-amd64 subtrace-linux-arm64 ./etc/python/subtrace/
-        sha256sum ./etc/python/subtrace/subtrace-*
+
+        echo "building pypi package"
         cd ./etc/python
+        sha256sum *
         make wheel
         sha256sum dist/*
-        TWINE_USERNAME=__token__ TWINE_PASSWORD=${{ secrets.SUBTRACE_PYPI_API_TOKEN }} make upload
+        TWINE_USERNAME=__token__ TWINE_PASSWORD=${{ secrets.SUBTRACE_PYPI_API_TOKEN }} twine upload dist/*
         cd ../..
 
-        cp subtrace-linux-amd64 subtrace-linux-arm64 ./etc/js/subtrace/
-        cd ./etc/js
-        make clean build
-        sha256sum ./subtrace/subtrace-*
-        npm version $(printf "0.0.%03d" "$(git log --oneline | wc -l)")
+        echo "building node package"
+        cd ./etc/node
+        sha256sum *
+        make pack
+        sha256sum *.tgz
         npm set //registry.npmjs.org/:_authToken=${{ secrets.SUBTRACE_NPM_PUBLISH_TOKEN }}
-        npm publish
+        (mkdir /tmp/tgz && cp *.tgz /tmp/tgz && cd /tmp/tgz && npm publish)
         cd ../..
 
   worker-docker:

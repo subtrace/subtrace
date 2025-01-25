@@ -8,7 +8,3 @@ download:
 wheel:
 	rm -f dist/*.whl
 	python -m build --wheel .
-
-.PHONY: upload
-upload:
-	twine upload dist/*
