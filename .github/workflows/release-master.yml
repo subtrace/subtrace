@@ -68,7 +68,7 @@ jobs:
 
         echo "building pypi package"
         cd ./etc/python
-        sha256sum *
+        for f in * subtrace/*; do sha256sum $f 2>/dev/null || true; done
         make wheel
         sha256sum dist/*
         TWINE_USERNAME=__token__ TWINE_PASSWORD=${{ secrets.SUBTRACE_PYPI_API_TOKEN }} twine upload dist/*
@@ -76,7 +76,7 @@ jobs:
 
         echo "building node package"
         cd ./etc/node
-        sha256sum *
+        for f in *; do sha256sum $f 2>/dev/null || true; done
         make pack
         sha256sum *.tgz
         npm set //registry.npmjs.org/:_authToken=${{ secrets.SUBTRACE_NPM_PUBLISH_TOKEN }}
