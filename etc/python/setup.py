@@ -6,7 +6,7 @@ from setuptools import setup
 setup(
     name="subtrace",
     description="Subtrace helper for Python apps",
-    version="0.{}".format(len(subprocess.check_output(["git", "log", "--oneline"]).decode("utf-8").split("\n"))),
+    version="0.{}".format(len(subprocess.check_output(["git", "log", "--oneline"]).decode("utf-8").split("\n"))-1),
     url="https://subtrace.dev",
     keywords="subtrace tracing api observability devtools",
     author="Subtrace, Inc.",
