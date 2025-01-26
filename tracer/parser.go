@@ -229,6 +229,26 @@ func (p *Parser) Finish() error {
 	return nil
 }
 
+func (p *Parser) getTags() map[string]string {
+	configTags := p.global.Config.Tags
+	statsTags := p.global.Stats.GetStatsTags()
+	tags := make(map[string]string)
+
+	for k, v := range configTags {
+		if v != "" {
+			tags[k] = v
+		}
+	}
+
+	for k, v := range statsTags {
+		if v != "" {
+			tags[k] = v
+		}
+	}
+
+	return tags
+}
+
 func (p *Parser) sendReflector(harJSON []byte) error {
 	b, err := proto.Marshal(&pubsub.Message{
 		Concrete: &pubsub.Message_ConcreteV1{
@@ -238,7 +258,7 @@ func (p *Parser) sendReflector(harJSON []byte) error {
 						Concrete: &pubsub.Event_ConcreteV1{
 							ConcreteV1: &pubsub.Event_V1{
 								HarEntryJson: harJSON,
-								Tags:         p.global.Config.Tags,
+								Tags:         p.getTags(),
 							},
 						},
 					},
@@ -262,6 +282,13 @@ func (p *Parser) sendTunneler(harJSON []byte) {
 	ev := p.global.EventTemplate.Copy()
 	ev.Set("event_id", p.eventID.String())
 	ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(harJSON))
+
+	for k, v := range p.getTags() {
+		if v != "" {
+			ev.Set(k, v)
+		}
+	}
+
 	DefaultManager.Insert(ev.String())
 }
 

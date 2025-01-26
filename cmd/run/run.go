@@ -37,6 +37,7 @@ import (
 	"subtrace.dev/event"
 	"subtrace.dev/global"
 	"subtrace.dev/logging"
+	"subtrace.dev/stats"
 	"subtrace.dev/tags"
 	"subtrace.dev/tracer"
 )
@@ -273,6 +274,7 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	}
 
 	c.global = new(global.Global)
+	c.global.Stats = stats.New(ctx)
 
 	if c.flags.pprof != "" {
 		f, err := os.Create(c.flags.pprof)
