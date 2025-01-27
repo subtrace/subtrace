@@ -272,18 +272,6 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		return 0, fmt.Errorf("check kernel version: %w", err)
 	}
 
-	if ok, err := hasSysPtrace(); err != nil {
-		return 1, fmt.Errorf("check if CAP_SYS_PTRACE exists: %w", err)
-	} else if !ok {
-		fmt.Fprintf(os.Stderr, "error: subtrace: missing SYS_PTRACE capability\n")
-		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "If you're using Docker, please add the --cap-add=SYS_PTRACE flag to\n")
-		fmt.Fprintf(os.Stderr, "your `docker run` command when you start the container to fix this.\n")
-		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "See https://docs.subtrace.dev/ptrace for more details.\n")
-		return 1, nil
-	}
-
 	c.global = new(global.Global)
 
 	if c.flags.pprof != "" {
@@ -351,7 +339,12 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 
 	pid, sec, err := c.forkChild()
 	if errors.Is(err, errMissingSysPtrace) {
-		fmt.Fprintf(os.Stderr, "subtrace: error: %v: was subtrace started with the SYS_PTRACE capability?\n", err)
+		fmt.Fprintf(os.Stderr, "error: subtrace: missing SYS_PTRACE capability\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "If you're using Docker, please add the --cap-add=SYS_PTRACE flag to\n")
+		fmt.Fprintf(os.Stderr, "your `docker run` command when you start the container to fix this.\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "See https://docs.subtrace.dev/ptrace for more details.\n")
 		return 1, nil
 	} else if err != nil {
 		return 0, fmt.Errorf("exec child: %w", err)
