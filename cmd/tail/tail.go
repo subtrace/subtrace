@@ -333,16 +333,19 @@ func dialWebsocket(ctx context.Context) (*websocket.Conn, error) {
 	if err != nil {
 		err := fmt.Errorf("websocket dial: %w", err)
 		if resp != nil {
-			err = fmt.Errorf("%w: %s", http.StatusText(resp.StatusCode))
+			err = fmt.Errorf("%w: %s", err, http.StatusText(resp.StatusCode))
 			if resp.Body != nil {
 				defer resp.Body.Close()
-				if b, _ := io.ReadAll(resp.Body); len(b) > 0 {
-					err = fmt.Errorf("%w: %s", string(b))
+				if b, err2 := io.ReadAll(resp.Body); err2 != nil && len(b) > 0 {
+					err = fmt.Errorf("%w: %s", err, string(b))
 				}
 			}
 		}
 		return nil, err
 	}
+
+	conn.SetReadLimit(1 << 24)
+
 	return conn, nil
 }
 
