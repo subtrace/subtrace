@@ -61,6 +61,8 @@ func (p *publisher) dialSingle(ctx context.Context) (*websocket.Conn, string, er
 		return nil, "", fmt.Errorf("dial: %w", err)
 	}
 
+	conn.SetReadLimit(1 << 24)
+
 	go func() {
 		for {
 			if _, _, err := conn.Read(context.Background()); err != nil {
