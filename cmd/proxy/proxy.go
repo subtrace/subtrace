@@ -207,6 +207,9 @@ func (c *Command) ModifyRequest(req *http.Request) error {
 	if !strings.HasPrefix(suffix, "/") {
 		suffix = "/" + suffix
 	}
+	if req.URL.RawQuery != "" {
+		suffix += "?" + req.URL.RawQuery
+	}
 
 	u, err := url.Parse(fmt.Sprintf("http://0.0.0.0:%d", c.to) + suffix)
 	if err != nil {
