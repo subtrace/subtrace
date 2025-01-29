@@ -481,6 +481,9 @@ func (c *Command) entrypointChild(ctx context.Context, args []string) error {
 	}
 
 	environ := append(os.Environ(), "SUBTRACE_RUN=1")
+	if tls.Enabled {
+		environ = append(environ, tls.Environ()...)
+	}
 
 	var syscalls []int
 	for nr, handler := range process.Handlers {
