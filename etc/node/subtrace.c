@@ -232,7 +232,7 @@ napi_value init(napi_env env, napi_callback_info cbinfo) {
   if (execv(pathname, argp) < 0) {
     free(argp);
     free(args);
-    return errorf(env, status, "execve failed: errno=%d", errno);
+    return errorf(env, status, "execv failed: errno=%d", errno);
   }
 
   return errorf(env, 0, "unreachable");
