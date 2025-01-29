@@ -154,6 +154,11 @@ func (p *Process) handleOpen(n *seccomp.Notif, dirfd int, pathAddr uintptr, flag
 	return nil
 }
 
+func fdcwd() uintptr {
+	x := unix.AT_FDCWD
+	return uintptr(x)
+}
+
 // handleFstatat handles the fstatat(2) syscall. We intercept it to ensure that
 // the file size of the system root CA store is consistent with the ephemeral
 // CA injection we do in the open(2) handler.
@@ -186,19 +191,21 @@ func (p *Process) handleFstatat(n *seccomp.Notif, dirfd int, pathAddr uintptr, b
 		panic(fmt.Sprintf("GOARCH=%s: unsupported", runtime.GOARCH))
 	}
 
+	pathb := []byte(path)
+
 	var orig linux.Stat
-	b := make([]byte, orig.SizeBytes(), orig.SizeBytes())
-	if _, _, errno := unix.Syscall6(uintptr(nr), uintptr(dirfd), pathAddr, uintptr(unsafe.Pointer(&b[0])), uintptr(flags), 0, 0); errno != 0 {
+	statb := make([]byte, orig.SizeBytes(), orig.SizeBytes())
+	if _, _, errno := unix.Syscall6(uintptr(nr), fdcwd(), uintptr(unsafe.Pointer(&pathb[0])), uintptr(unsafe.Pointer(&statb[0])), uintptr(flags), 0, 0); errno != 0 {
 		return n.Skip()
 	}
-	orig.UnmarshalBytes(b)
+	orig.UnmarshalBytes(statb)
 
 	repl := orig
 	repl.Size += int64(len(ephemeralPEM))
-	b = make([]byte, repl.SizeBytes(), repl.SizeBytes())
-	repl.MarshalBytes(b)
+	statb = make([]byte, repl.SizeBytes(), repl.SizeBytes())
+	repl.MarshalBytes(statb)
 
-	errno, err = p.vmWriteBytes(n, bufAddr, b)
+	errno, err = p.vmWriteBytes(n, bufAddr, statb)
 	if err != nil {
 		return fmt.Errorf("write stat to process memory: %w", err)
 	}
