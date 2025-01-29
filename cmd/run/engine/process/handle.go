@@ -127,12 +127,7 @@ func (p *Process) handleOpen(n *seccomp.Notif, dirfd int, pathAddr uintptr, flag
 
 	ephemeralPEM := tls.GetEphemeralCAPEM()
 
-	tlsPath := tls.ResolvePath(path)
-	if tlsPath == "" {
-		n.Skip()
-	}
-
-	orig, err := os.ReadFile(tlsPath)
+	orig, err := os.ReadFile(path)
 	if err != nil {
 		return n.Skip()
 	}
@@ -196,12 +191,7 @@ func (p *Process) handleFstatat(n *seccomp.Notif, dirfd int, pathAddr uintptr, b
 		panic(fmt.Sprintf("GOARCH=%s: unsupported", runtime.GOARCH))
 	}
 
-	tlsPath := tls.ResolvePath(path)
-	if tlsPath == "" {
-		return n.Skip()
-	}
-
-	pathb := []byte(tlsPath)
+	pathb := []byte(path)
 
 	var orig linux.Stat
 	statb := make([]byte, orig.SizeBytes(), orig.SizeBytes())
@@ -237,12 +227,7 @@ func (p *Process) handleStatx(n *seccomp.Notif, dirfd int, pathAddr uintptr, fla
 
 	ephemeralPEM := tls.GetEphemeralCAPEM()
 
-	tlsPath := tls.ResolvePath(path)
-	if tlsPath == "" {
-		return n.Skip()
-	}
-
-	pathb := []byte(tlsPath)
+	pathb := []byte(path)
 
 	var orig linux.Statx
 	b := make([]byte, orig.SizeBytes(), orig.SizeBytes())
