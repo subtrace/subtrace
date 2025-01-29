@@ -318,8 +318,6 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 		defer p.discardMulti(bcr, bsr)
 
 		for {
-			eventID := uuid.New()
-
 			req, err := http.ReadRequest(bcr)
 			switch {
 			case err == nil:
@@ -331,8 +329,10 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
-			parser := tracer.NewParser(p.global, eventID)
+			event := p.tmpl.Copy()
+			event.Set("event_id", uuid.New().String())
 
+			parser := tracer.NewParser(p.global, event)
 			parser.UseRequest(req)
 			go func() {
 				defer req.Body.Close()
@@ -350,29 +350,18 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
-			if p.global.Config != nil {
-				begin := time.Now()
-				rule, found := p.global.Config.FindMatchingRule(req, resp)
-				slog.Debug("ran config rules on request", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
-
-				if found && rule.Then == "exclude" {
-					return
-				}
-			}
-
 			parser.UseResponse(resp)
 			go func() {
 				defer resp.Body.Close()
 				io.Copy(io.Discard, resp.Body)
 			}()
-
 			if err := parser.Finish(); err != nil {
-				slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
+				slog.Error("failed to finish HAR parser", "eventID", event.Get("event_id"), "err", err)
 			}
 
 			if resp.StatusCode == http.StatusSwitchingProtocols {
 				// We don't support other protocols at the moment (e.g. websocket).
-				slog.Debug("proxy: dropping into fallback copy after status 101 Switching Protocols", "proxy", p, "eventID", eventID, "tags.http_req_upgrade", req.Header.Get("upgrade"))
+				slog.Debug("proxy: dropping into fallback copy after status 101 Switching Protocols", "proxy", p, "eventID", event.Get("event_id"), "tags.http_req_upgrade", req.Header.Get("upgrade"))
 				if err := p.discardMulti(bcr, bsr); err != nil {
 					errs <- fmt.Errorf("discard after HTTP 101: %w", err)
 					return
@@ -633,9 +622,10 @@ func (h *hijacker) ModifyRequest(req *http.Request) error {
 }
 
 func (h *hijacker) RoundTrip(req *http.Request) (*http.Response, error) {
-	eventID := uuid.New()
+	event := h.proxy.global.Config.GetEventTemplate()
+	event.Set("event_id", uuid.New().String())
 
-	parser := tracer.NewParser(h.proxy.global, eventID)
+	parser := tracer.NewParser(h.proxy.global, event)
 	parser.UseRequest(req)
 
 	tr := &http.Transport{
@@ -660,20 +650,10 @@ func (h *hijacker) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
-	if h.proxy.global.Config != nil {
-		begin := time.Now()
-		rule, found := h.proxy.global.Config.FindMatchingRule(req, resp)
-		slog.Debug("ran config rules on request", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
-
-		if found && rule.Then == "exclude" {
-			return resp, err
-		}
-	}
-
 	parser.UseResponse(resp)
 	go func() {
 		if err := parser.Finish(); err != nil {
-			slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
+			slog.Error("failed to finish HAR parser", "eventID", event.Get("event_id"), "err", err)
 		}
 	}()
 

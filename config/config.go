@@ -4,26 +4,35 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"net/url"
 	"os"
-	"reflect"
 
-	"github.com/google/cel-go/cel"
+	"github.com/google/martian/v3/har"
 	"gopkg.in/yaml.v3"
+	"subtrace.dev/event"
+	"subtrace.dev/filter"
+	"subtrace.dev/tags"
 )
 
 type Config struct {
-	Tags  map[string]string `yaml:"tags"`
-	Rules []Rule            `yaml:"rules"`
+	parsed struct {
+		Tags  map[string]string `yaml:"tags"`
+		Rules []struct {
+			If   string `yaml:"if"`
+			Then string `yaml:"then"`
+		} `yaml:"rules"`
+	}
+
+	filters  []*filter.Filter
+	template *event.Event
 }
 
 func New() *Config {
-	return &Config{
-		Tags: make(map[string]string),
-	}
+	c := &Config{template: event.New()}
+	go tags.SetLocalTagsAsync(c.template)
+	return c
 }
 
 func (c *Config) Load(path string) error {
@@ -31,32 +40,17 @@ func (c *Config) Load(path string) error {
 		return fmt.Errorf("empty path")
 	}
 
-	b, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("read: %w", err)
+		return fmt.Errorf("open: %w", err)
+	}
+	defer f.Close()
+
+	if err := yaml.NewDecoder(bufio.NewReader(f)).Decode(&c.parsed); err != nil {
+		return fmt.Errorf("decode: %w", err)
 	}
 
-	if err = yaml.Unmarshal(b, c); err != nil {
-		return fmt.Errorf("unmarshal: %w", err)
-	}
-	if err := c.Validate(); err != nil {
-		return fmt.Errorf("validate: %w", err)
-	}
-
-	slog.Debug("parsed config", "rules", len(c.Rules), "tags", len(c.Tags))
-	return nil
-}
-
-func (c *Config) Validate() error {
-	env, err := cel.NewEnv(
-		cel.Variable("request", cel.DynType),
-		cel.Variable("response", cel.DynType),
-	)
-	if err != nil {
-		return fmt.Errorf("create cel env: %w", err)
-	}
-
-	for key := range c.Tags {
+	for key, val := range c.parsed.Tags {
 		for _, c := range key {
 			switch {
 			case c >= 'a' && c <= 'z':
@@ -64,87 +58,39 @@ func (c *Config) Validate() error {
 			case c >= '0' && c <= '9':
 			case c == '_':
 			default:
-				return fmt.Errorf("invalid tag key: %q", key)
+				return fmt.Errorf("validate tags: invalid key %q: only letters, digits and underscores allowed", key)
 			}
 		}
+
+		c.template.Set(key, val)
 	}
 
-	for index, rule := range c.Rules {
-		switch rule.Then {
-		case "include":
-		case "exclude":
-		default:
-			return fmt.Errorf("config: invalid action in rule: %q. Expected either 'include' or 'exclude'", rule.Then)
-		}
-
-		ast, iss := env.Compile(rule.If)
-		if err = iss.Err(); err != nil {
-			return fmt.Errorf("compile program: %w", err)
-		}
-		if !reflect.DeepEqual(ast.OutputType(), cel.BoolType) {
-			return fmt.Errorf("typecheck program: Got %v, wanted %v result type", ast.OutputType(), cel.BoolType)
-		}
-		program, err := env.Program(ast)
+	for i, rule := range c.parsed.Rules {
+		f, err := filter.NewFilter(rule.If, filter.Action(rule.Then))
 		if err != nil {
-			return fmt.Errorf("create program instance: %w", err)
-		}
-		c.Rules[index].program = program
-	}
-
-	// Test config on a dummmy request and response as a sanity check
-	for _, rule := range c.Rules {
-		if _, err := rule.Matches(&http.Request{URL: &url.URL{}}, &http.Response{}); err != nil {
-			return fmt.Errorf("config test: %w", err)
+			return fmt.Errorf("validate rules: rule %d: new filter: %w", i, err)
+		} else {
+			c.filters = append(c.filters, f)
 		}
 	}
 
+	slog.Debug("parsed config", "rules", len(c.parsed.Rules), "tags", len(c.parsed.Tags))
 	return nil
 }
 
-func (c *Config) FindMatchingRule(req *http.Request, resp *http.Response) (rule *Rule, found bool) {
-	for _, rule := range c.Rules {
-		matches, err := rule.Matches(req, resp)
-		// Ignore errors here and skip this rule because we want to be robust when tracing requests
+func (c *Config) GetMatchingFilter(tags map[string]string, entry *har.Entry) (*filter.Filter, error) {
+	for i := 0; i < len(c.filters); i++ {
+		match, err := c.filters[i].Eval(tags, entry)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("filter %d: eval: %w", i, err)
 		}
-
-		if matches {
-			return &rule, true
+		if match {
+			return c.filters[i], nil
 		}
 	}
-
-	return nil, false
+	return nil, nil
 }
 
-type Rule struct {
-	If   string `yaml:"if"`
-	Then string `yaml:"then"`
-
-	program cel.Program
-}
-
-func (r *Rule) Matches(req *http.Request, resp *http.Response) (bool, error) {
-	celReq := map[string]any{
-		"method": req.Method,
-		"url":    req.URL.String(),
-	}
-	celResp := map[string]any{
-		"status": resp.StatusCode,
-	}
-
-	out, _, err := r.program.Eval(map[string]any{
-		"request":  celReq,
-		"response": celResp,
-	})
-	if err != nil {
-		return false, fmt.Errorf("evaluting program on rule %q: %w", r.If, err)
-	}
-
-	match, ok := out.Value().(bool)
-	if !ok {
-		return false, fmt.Errorf("evaluting program on rule %q: expected bool but got %T", r.If, out.Value())
-	}
-
-	return match, nil
+func (c *Config) GetEventTemplate() *event.Event {
+	return c.template.Copy()
 }

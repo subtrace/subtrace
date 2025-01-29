@@ -34,11 +34,9 @@ import (
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/config"
 	"subtrace.dev/devtools"
-	"subtrace.dev/event"
 	"subtrace.dev/global"
 	"subtrace.dev/logging"
 	"subtrace.dev/stats"
-	"subtrace.dev/tags"
 	"subtrace.dev/tracer"
 )
 
@@ -358,12 +356,6 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		c.flags.devtools = "/" + c.flags.devtools
 	}
 	c.global.Devtools = devtools.NewServer(c.flags.devtools)
-
-	c.global.EventTemplate = event.New()
-	for k, v := range c.global.Config.Tags {
-		c.global.EventTemplate.Set(k, v)
-	}
-	go tags.SetLocalTagsAsync(c.global.EventTemplate)
 
 	itab := socket.NewInodeTable()
 

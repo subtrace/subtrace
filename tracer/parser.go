@@ -20,8 +20,9 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/google/martian/v3/har"
-	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
+	"subtrace.dev/event"
+	"subtrace.dev/filter"
 	"subtrace.dev/global"
 	"subtrace.dev/pubsub"
 )
@@ -29,8 +30,8 @@ import (
 var PayloadLimitBytes int64 = 4096 // bytes
 
 type Parser struct {
-	global  *global.Global
-	eventID uuid.UUID
+	global *global.Global
+	event  *event.Event
 
 	wg       sync.WaitGroup
 	errs     chan error
@@ -40,10 +41,10 @@ type Parser struct {
 	response *har.Response
 }
 
-func NewParser(global *global.Global, eventID uuid.UUID) *Parser {
+func NewParser(global *global.Global, event *event.Event) *Parser {
 	return &Parser{
-		global:  global,
-		eventID: eventID,
+		global: global,
+		event:  event,
 
 		errs:  make(chan error, 2),
 		begin: time.Now().UTC(),
@@ -179,16 +180,39 @@ func (p *Parser) UseResponse(resp *http.Response) {
 	}()
 }
 
+func (p *Parser) include(tags map[string]string, entry *har.Entry) bool {
+	begin := time.Now()
+	defer func() {
+		slog.Debug("evaluated filters", "eventID", p.event.Get("event_id"), "took", time.Since(begin).Round(time.Microsecond))
+	}()
+
+	f, err := p.global.Config.GetMatchingFilter(tags, entry)
+	if err != nil {
+		// fall back to tracing the request if filter eval fails
+		return true
+	}
+	if f == nil {
+		return true
+	}
+
+	switch f.Action {
+	case filter.ActionInclude:
+		return true
+	case filter.ActionExclude:
+		return false
+	default:
+		panic(fmt.Errorf("unknown filter action %q", f.Action))
+	}
+}
+
 func (p *Parser) Finish() error {
 	p.wg.Wait()
-	for i := 0; i < 2; i++ {
-		if err := <-p.errs; err != nil {
-			return fmt.Errorf("parse as HAR: %w", err)
-		}
+	if err := errors.Join(<-p.errs, <-p.errs); err != nil {
+		return err
 	}
 
 	entry := &har.Entry{
-		ID:              p.eventID.String(),
+		ID:              p.event.Get("event_id"),
 		StartedDateTime: p.begin.UTC(),
 		Time:            time.Since(p.begin).Milliseconds(),
 		Request:         p.request,
@@ -196,15 +220,25 @@ func (p *Parser) Finish() error {
 		Timings:         &p.timings,
 	}
 
-	slog.Debug("HAR parser finished parsing request", "eventID", p.eventID, "took", time.Since(p.begin).Microseconds())
+	if p.global.Stats != nil {
+		for key, val := range p.global.Stats.GetStatsTags() {
+			p.event.Set(key, val)
+		}
+	}
 
-	b, err := json.Marshal(entry)
+	tags := p.event.Map()
+
+	if !p.include(tags, entry) {
+		return nil
+	}
+
+	json, err := json.Marshal(entry)
 	if err != nil {
 		return fmt.Errorf("encode json: %w", err)
 	}
 
 	if p.global.Devtools != nil {
-		go p.global.Devtools.Send(b)
+		go p.global.Devtools.Send(json)
 	}
 
 	var sendReflector, sendTunneler bool
@@ -219,37 +253,19 @@ func (p *Parser) Finish() error {
 		sendReflector, sendTunneler = true, false
 	}
 	if sendReflector {
-		if err := p.sendReflector(b); err != nil {
-			slog.Error("failed to publish event to reflector", "eventID", p.eventID, "err", err)
+		if err := p.sendReflector(tags, json); err != nil {
+			slog.Error("failed to publish event to reflector", "eventID", p.event.Get("event_id"), "err", err)
 		}
 	}
 	if sendTunneler {
-		p.sendTunneler(b)
+		ev := p.event.Copy()
+		ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(json))
+		DefaultManager.Insert(ev.String())
 	}
 	return nil
 }
 
-func (p *Parser) getTags() map[string]string {
-	configTags := p.global.Config.Tags
-	statsTags := p.global.Stats.GetStatsTags()
-	tags := make(map[string]string)
-
-	for k, v := range configTags {
-		if v != "" {
-			tags[k] = v
-		}
-	}
-
-	for k, v := range statsTags {
-		if v != "" {
-			tags[k] = v
-		}
-	}
-
-	return tags
-}
-
-func (p *Parser) sendReflector(harJSON []byte) error {
+func (p *Parser) sendReflector(tags map[string]string, json []byte) error {
 	b, err := proto.Marshal(&pubsub.Message{
 		Concrete: &pubsub.Message_ConcreteV1{
 			ConcreteV1: &pubsub.Message_V1{
@@ -257,8 +273,8 @@ func (p *Parser) sendReflector(harJSON []byte) error {
 					Event: &pubsub.Event{
 						Concrete: &pubsub.Event_ConcreteV1{
 							ConcreteV1: &pubsub.Event_V1{
-								HarEntryJson: harJSON,
-								Tags:         p.getTags(),
+								Tags:         tags,
+								HarEntryJson: json,
 							},
 						},
 					},
@@ -276,20 +292,6 @@ func (p *Parser) sendReflector(harJSON []byte) error {
 	default:
 		return fmt.Errorf("publisher channel buffer full")
 	}
-}
-
-func (p *Parser) sendTunneler(harJSON []byte) {
-	ev := p.global.EventTemplate.Copy()
-	ev.Set("event_id", p.eventID.String())
-	ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(harJSON))
-
-	for k, v := range p.getTags() {
-		if v != "" {
-			ev.Set(k, v)
-		}
-	}
-
-	DefaultManager.Insert(ev.String())
 }
 
 type sampler struct {

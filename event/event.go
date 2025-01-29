@@ -111,3 +111,14 @@ func (ev *Event) String() string {
 	}
 	return strings.Join(arr, " ")
 }
+
+func (ev *Event) Map() map[string]string {
+	ev.mu.RLock()
+	defer ev.mu.RUnlock()
+
+	m := make(map[string]string)
+	for key, val := range ev.vals {
+		m[key] = val
+	}
+	return m
+}
