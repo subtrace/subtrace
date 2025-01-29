@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/google/martian/v3"
 	"github.com/google/uuid"
@@ -25,10 +24,8 @@ import (
 	"subtrace.dev/cmd/version"
 	"subtrace.dev/config"
 	"subtrace.dev/devtools"
-	"subtrace.dev/event"
 	"subtrace.dev/global"
 	"subtrace.dev/logging"
-	"subtrace.dev/tags"
 	"subtrace.dev/tracer"
 )
 
@@ -153,12 +150,6 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	}
 	c.global.Devtools = devtools.NewServer(c.flags.devtools)
 
-	c.global.EventTemplate = event.New()
-	for k, v := range c.global.Config.Tags {
-		c.global.EventTemplate.Set(k, v)
-	}
-	go tags.SetLocalTagsAsync(c.global.EventTemplate)
-
 	switch err := c.start(ctx); {
 	case err == nil:
 		return nil
@@ -222,9 +213,10 @@ func (c *Command) ModifyRequest(req *http.Request) error {
 }
 
 func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
-	eventID := uuid.New()
+	event := c.global.Config.GetEventTemplate()
+	event.Set("event_id", uuid.New().String())
 
-	parser := tracer.NewParser(c.global, eventID)
+	parser := tracer.NewParser(c.global, event)
 	parser.UseRequest(req)
 
 	tr := &http.Transport{
@@ -236,22 +228,11 @@ func (c *Command) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, err
 	}
 
-	if c.global.Config != nil {
-		begin := time.Now()
-		rule, found := c.global.Config.FindMatchingRule(req, resp)
-		slog.Debug("ran config rules on request", "eventID", eventID, "took", time.Since(begin).Round(time.Microsecond))
-
-		if found && rule.Then == "exclude" {
-			return resp, nil
-		}
-	}
-
 	parser.UseResponse(resp)
 	go func() {
 		if err := parser.Finish(); err != nil {
-			slog.Error("failed to finish HAR entry insert", "eventID", eventID, "err", err)
+			slog.Error("failed to finish HAR entry insert", "eventID", event.Get("event_id"), "err", err)
 		}
 	}()
-
 	return resp, nil
 }

@@ -65,8 +65,7 @@ func (p *Process) getEventTemplate() *event.Event {
 		return tmpl
 	}
 
-	tmpl := p.global.EventTemplate.Copy()
-
+	tmpl := p.global.Config.GetEventTemplate()
 	tmpl.Set("process_id", fmt.Sprintf("%d", p.PID))
 
 	if path, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", p.PID)); err == nil {
