@@ -25,6 +25,7 @@ import (
 	"subtrace.dev/filter"
 	"subtrace.dev/global"
 	"subtrace.dev/pubsub"
+	"subtrace.dev/stats"
 )
 
 var PayloadLimitBytes int64 = 4096 // bytes
@@ -220,10 +221,8 @@ func (p *Parser) Finish() error {
 		Timings:         &p.timings,
 	}
 
-	if p.global.Stats != nil {
-		for key, val := range p.global.Stats.GetStatsTags() {
-			p.event.Set(key, val)
-		}
+	for k, v := range stats.Load() {
+		p.event.Set(k, v)
 	}
 
 	tags := p.event.Map()

@@ -272,7 +272,6 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	}
 
 	c.global = new(global.Global)
-	c.global.Stats = stats.New(ctx)
 
 	if c.flags.pprof != "" {
 		f, err := os.Create(c.flags.pprof)
@@ -295,6 +294,8 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	}
 
 	tracer.InitPublisher(ctx)
+
+	go stats.Loop(ctx)
 
 	go c.watchSignals()
 
