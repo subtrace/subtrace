@@ -91,17 +91,15 @@ func GetEphemeralCAPEM() []byte {
 	return b
 }
 
-const overridePath = "/subtrace_tls_override.crt"
-
 func Environ() []string {
-	var ok bool
+	var found string
 	for _, path := range knownPEM {
 		if _, err := os.Stat(path); err == nil {
-			ok = true
+			found = path
 			break
 		}
 	}
-	if !ok {
+	if found == "" {
 		return nil
 	}
 
@@ -115,7 +113,7 @@ func Environ() []string {
 	var ret []string
 	for _, key := range keys {
 		if os.Getenv(key) == "" {
-			ret = append(ret, fmt.Sprintf("%s=%s", key, overridePath))
+			ret = append(ret, fmt.Sprintf("%s=%s", key, found))
 		}
 	}
 	return ret
@@ -135,9 +133,6 @@ var knownPEM = []string{
 // IsKnownPath returns true if the given path is a known root CA certificate
 // path on a Linux distro.
 func IsKnownPath(path string) bool {
-	if path == overridePath {
-		return true
-	}
 	for i := range knownPEM {
 		if path == knownPEM[i] {
 			return true
@@ -146,20 +141,6 @@ func IsKnownPath(path string) bool {
 
 	// TODO: support /etc/gnutls/config
 	return false
-}
-
-func ResolvePath(path string) string {
-	if path == overridePath {
-		for i := range knownPEM {
-			if _, err := os.Stat(knownPEM[i]); err == nil {
-				return knownPEM[i]
-			}
-		}
-	}
-	if _, err := os.Stat(path); err == nil {
-		return path
-	}
-	return ""
 }
 
 // newLeafCertificate generates an ephemeral X.509 leaf certificate for a TLS
