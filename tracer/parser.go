@@ -21,6 +21,7 @@ import (
 	"github.com/andybalholm/brotli"
 	"github.com/google/martian/v3/har"
 	"google.golang.org/protobuf/proto"
+	"subtrace.dev/cmd/run/journal"
 	"subtrace.dev/event"
 	"subtrace.dev/filter"
 	"subtrace.dev/global"
@@ -40,15 +41,24 @@ type Parser struct {
 	timings  har.Timings
 	request  *har.Request
 	response *har.Response
+
+	journalIdx uint64
 }
 
 func NewParser(global *global.Global, event *event.Event) *Parser {
+	var journalIdx uint64
+	if journal.Enabled {
+		journalIdx = global.Journal.GetIndex()
+	}
+
 	return &Parser{
 		global: global,
 		event:  event,
 
 		errs:  make(chan error, 2),
 		begin: time.Now().UTC(),
+
+		journalIdx: journalIdx,
 	}
 }
 
@@ -212,6 +222,11 @@ func (p *Parser) Finish() error {
 		return err
 	}
 
+	var loglines []string
+	if journal.Enabled {
+		loglines = p.global.Journal.CopyFrom(p.journalIdx)
+	}
+
 	entry := &har.Entry{
 		ID:              p.event.Get("event_id"),
 		StartedDateTime: p.begin.UTC(),
@@ -252,7 +267,7 @@ func (p *Parser) Finish() error {
 		sendReflector, sendTunneler = true, false
 	}
 	if sendReflector {
-		if err := p.sendReflector(tags, json); err != nil {
+		if err := p.sendReflector(tags, json, loglines); err != nil {
 			slog.Error("failed to publish event to reflector", "eventID", p.event.Get("event_id"), "err", err)
 		}
 	}
@@ -264,7 +279,7 @@ func (p *Parser) Finish() error {
 	return nil
 }
 
-func (p *Parser) sendReflector(tags map[string]string, json []byte) error {
+func (p *Parser) sendReflector(tags map[string]string, json []byte, loglines []string) error {
 	b, err := proto.Marshal(&pubsub.Message{
 		Concrete: &pubsub.Message_ConcreteV1{
 			ConcreteV1: &pubsub.Message_V1{
@@ -274,6 +289,10 @@ func (p *Parser) sendReflector(tags map[string]string, json []byte) error {
 							ConcreteV1: &pubsub.Event_V1{
 								Tags:         tags,
 								HarEntryJson: json,
+								Log: &pubsub.Event_Log{
+									Lines: loglines,
+									Index: p.journalIdx + 1,
+								},
 							},
 						},
 					},
