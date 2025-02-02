@@ -5,8 +5,8 @@ set -eo pipefail
 pinned_version=chromium/6968
 
 cmd:devtools() {
-  cmd:fetch
-  cmd:bundle
+  (cmd:fetch)
+  (cmd:bundle)
 }
 
 cmd:fetch() {
