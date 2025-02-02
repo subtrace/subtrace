@@ -11,7 +11,7 @@ jobs:
     - run: |
         set -e
         sudo apt update && sudo apt install esbuild
-        cd devtools && make fetch build
+        cd devtools && make
     - uses: actions/upload-artifact@v4
       with:
         name: devtools.js.gz
