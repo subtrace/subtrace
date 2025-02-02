@@ -28,9 +28,15 @@ message JoinSubscriber {
 }
 
 message Event {
+  message Log {
+    repeated string lines = 1;
+    uint64 index = 2;
+  }
+
   message V1 {
     map<string, string> tags = 1;
     bytes har_entry_json = 2;
+    Log log = 3;
   }
 
   oneof concrete {

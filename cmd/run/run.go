@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -28,6 +29,7 @@ import (
 	"subtrace.dev/cmd/run/engine/seccomp"
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/futex"
+	"subtrace.dev/cmd/run/journal"
 	"subtrace.dev/cmd/run/kernel"
 	"subtrace.dev/cmd/run/socket"
 	"subtrace.dev/cmd/run/tls"
@@ -66,6 +68,7 @@ func NewCommand() *ffcli.Command {
 	c.FlagSet.StringVar(&c.flags.devtools, "devtools", "", "path to serve the chrome devtools bundle on")
 	c.FlagSet.BoolVar(&tls.Enabled, "tls", true, "intercept outgoing TLS requests")
 	c.FlagSet.StringVar(&c.flags.pprof, "pprof", "", "write pprof CPU profile to file")
+	c.FlagSet.BoolVar(&journal.Enabled, "tracelogs", false, "trace stdout and stderr logs")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose debug logging")
 	c.UsageFunc = func(fc *ffcli.Command) string {
 		return ffcli.DefaultUsageFunc(fc) + ExtraHelp()
@@ -425,9 +428,48 @@ func (c *Command) forkChild() (pid int, sec *seccomp.Listener, err error) {
 	if err != nil {
 		return 0, nil, fmt.Errorf("get executable: %w", err)
 	}
+
+	outfd := 1
+	errfd := 2
+
+	if journal.Enabled {
+		outpipe := make([]int, 2)
+		err := unix.Pipe(outpipe)
+		if err != nil {
+			return 0, nil, fmt.Errorf("stdout pipe: %w", err)
+		}
+
+		errpipe := make([]int, 2)
+		err = unix.Pipe(errpipe)
+		if err != nil {
+			return 0, nil, fmt.Errorf("stderr pipe: %w", err)
+		}
+
+		c.global.Journal = journal.New()
+
+		outfd = outpipe[1]
+		errfd = errpipe[1]
+
+		go func() {
+			outfile := os.NewFile(uintptr(outpipe[0]), "out")
+			defer outfile.Close()
+			for {
+				io.Copy(io.MultiWriter(os.Stdout, c.global.Journal), outfile)
+			}
+		}()
+
+		go func() {
+			errfile := os.NewFile(uintptr(errpipe[0]), "err")
+			defer errfile.Close()
+			for {
+				io.Copy(io.MultiWriter(os.Stderr, c.global.Journal), errfile)
+			}
+		}()
+	}
+
 	pid, err = syscall.ForkExec(self, os.Args, &syscall.ProcAttr{
 		Env:   append(os.Environ(), "_SUBTRACE_CHILD=true"),
-		Files: []uintptr{0, 1, 2, uintptr(memfd)},
+		Files: []uintptr{0, uintptr(outfd), uintptr(errfd), uintptr(memfd)},
 	})
 	if err != nil {
 		return 0, nil, fmt.Errorf("fork and exec: %w", err)

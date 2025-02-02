@@ -1,6 +1,7 @@
 package global
 
 import (
+	"subtrace.dev/cmd/run/journal"
 	"subtrace.dev/config"
 	"subtrace.dev/devtools"
 )
@@ -8,4 +9,5 @@ import (
 type Global struct {
 	Config   *config.Config
 	Devtools *devtools.Server
+	Journal  *journal.Journal
 }
