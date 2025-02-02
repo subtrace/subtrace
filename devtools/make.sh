@@ -4,7 +4,7 @@ set -eo pipefail
 
 pinned_version=chromium/6968
 
-cmd:all() {
+cmd:devtools() {
   cmd:fetch
   cmd:bundle
 }
@@ -45,7 +45,7 @@ main() {
     cmd=$(echo "$1" | tr ':' ' ')
     cmd:$cmd
   else
-    cmd:all
+    cmd:devtools
   fi
 }
 
