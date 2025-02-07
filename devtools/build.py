@@ -13,7 +13,7 @@ def exfil_classes():
         "panels/network/NetworkItemView.js": ["NetworkItemView"],
         "panels/network/NetworkLogView.js":  ["NetworkLogView"],
         "panels/network/NetworkPanel.js":    ["NetworkPanel"],
-        "ui/legacy/InspectorView.js":        ["InspectorView"],
+        "ui/legacy/InspectorView.js":        ["InspectorView", "ActionDelegate"],
     }
 
     for path, arr in exfil.items():
