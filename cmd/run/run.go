@@ -454,7 +454,7 @@ func (c *Command) forkChild() (pid int, sec *seccomp.Listener, err error) {
 			outfile := os.NewFile(uintptr(outpipe[0]), "out")
 			defer outfile.Close()
 			for {
-				io.Copy(io.MultiWriter(os.Stdout, c.global.Journal), outfile)
+				io.Copy(io.MultiWriter(os.Stdout, c.global.Journal.Stdout), outfile)
 			}
 		}()
 
@@ -462,7 +462,7 @@ func (c *Command) forkChild() (pid int, sec *seccomp.Listener, err error) {
 			errfile := os.NewFile(uintptr(errpipe[0]), "err")
 			defer errfile.Close()
 			for {
-				io.Copy(io.MultiWriter(os.Stderr, c.global.Journal), errfile)
+				io.Copy(io.MultiWriter(os.Stderr, c.global.Journal.Stderr), errfile)
 			}
 		}()
 	}

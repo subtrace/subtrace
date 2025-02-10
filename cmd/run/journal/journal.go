@@ -11,73 +11,81 @@ var Enabled bool = false
 const maxLogLines = 4096
 
 type Journal struct {
-	ingest struct {
-		mu sync.Mutex
-		pw *io.PipeWriter
-	}
+	Stdout io.Writer
+	Stderr io.Writer
 
-	store struct {
-		mu  sync.RWMutex
-		buf [maxLogLines]string
-		idx uint64
-	}
+	mu  sync.RWMutex
+	buf [maxLogLines]string
+	idx uint64
+
+	ch chan string
 }
 
 func New() *Journal {
-	pr, pw := io.Pipe()
 	j := new(Journal)
-	j.ingest.pw = pw
+	j.ch = make(chan string, 1<<16)
 
-	go j.loop(pr)
+	prout, pwout := io.Pipe()
+	prerr, pwerr := io.Pipe()
+	j.Stdout = pwout
+	j.Stderr = pwerr
+
+	go j.listen()
+	go j.loop(prout)
+	go j.loop(prerr)
 
 	return j
 }
 
-func (j *Journal) loop(pr *io.PipeReader) {
-	defer pr.Close()
+func (j *Journal) loop(r io.ReadCloser) {
+	defer r.Close()
 
-	s := bufio.NewScanner(pr)
+	s := bufio.NewScanner(r)
 	for s.Scan() {
 		line := s.Text()
 		if len(line) > 1024 {
 			line = line[:1024]
 		}
 
-		j.addLine(line)
+		select {
+		case j.ch <- line:
+		default:
+			// dropping data
+		}
+	}
+}
+
+func (j *Journal) listen() {
+	for {
+		j.addLine(<-j.ch)
 	}
 }
 
 func (j *Journal) addLine(line string) {
-	j.store.mu.Lock()
-	defer j.store.mu.Unlock()
+	j.mu.Lock()
+	defer j.mu.Unlock()
 
-	j.store.buf[j.store.idx%maxLogLines] = line
-	j.store.idx++
+	j.buf[j.idx%maxLogLines] = line
+	j.idx++
 }
 
 func (j *Journal) CopyFrom(start uint64) []string {
-	j.store.mu.RLock()
-	defer j.store.mu.RUnlock()
+	j.mu.RLock()
+	defer j.mu.RUnlock()
 
-	numLines := min(j.store.idx-start, maxLogLines)
-	bufEnd := j.store.idx % maxLogLines
-	bufStart := (j.store.idx - numLines) % maxLogLines
+	numLines := min(j.idx-start, maxLogLines)
+	bufEnd := j.idx % maxLogLines
+	bufStart := (j.idx - numLines) % maxLogLines
 
 	if bufStart <= bufEnd {
-		return append([]string{}, j.store.buf[bufStart:bufEnd+1]...)
+		return append([]string{}, j.buf[bufStart:bufEnd+1]...)
 	} else {
-		return append(j.store.buf[bufStart:], j.store.buf[:bufEnd+1]...)
+		return append(j.buf[bufStart:], j.buf[:bufEnd+1]...)
 	}
 }
 
 func (j *Journal) GetIndex() uint64 {
-	j.store.mu.RLock()
-	defer j.store.mu.RUnlock()
-	return j.store.idx
-}
-
-func (j *Journal) Write(data []byte) (int, error) {
-	j.ingest.mu.Lock()
-	defer j.ingest.mu.Unlock()
-	return j.ingest.pw.Write(data)
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.idx
 }
