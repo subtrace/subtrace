@@ -7,6 +7,7 @@ option go_package = "subtrace.dev/pubsub";
 // POST /api/JoinPublisher
 message JoinPublisher {
   message Request {
+    optional string link_id_override = 1;
   }
 
   message Response {
