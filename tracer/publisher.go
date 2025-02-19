@@ -29,15 +29,22 @@ func InitPublisher(ctx context.Context) {
 }
 
 func (p *publisher) dialSingle(ctx context.Context) (*websocket.Conn, string, error) {
+	req := &pubsub.JoinPublisher_Request{}
+
 	var opts []rpc.Option
 	if os.Getenv("SUBTRACE_TOKEN") == "" {
+		linkID := os.Getenv("SUBTRACE_LINK_ID_OVERRIDE")
+		if linkID != "" {
+			req.LinkIdOverride = &linkID
+		}
+
 		opts = append(opts, rpc.WithoutToken())
 	} else {
 		opts = append(opts, rpc.WithToken())
 	}
 
 	var pub pubsub.JoinPublisher_Response
-	if code, err := rpc.Call(ctx, &pub, "/api/JoinPublisher", &pubsub.JoinPublisher_Request{}, opts...); err != nil {
+	if code, err := rpc.Call(ctx, &pub, "/api/JoinPublisher", req, opts...); err != nil {
 		return nil, "", fmt.Errorf("call JoinPublisher: %w", err)
 	} else if code != http.StatusOK || (pub.Error != nil && *pub.Error != "") {
 		err := fmt.Errorf("JoinPublisher: %s", http.StatusText(code))

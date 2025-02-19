@@ -130,6 +130,10 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 
 	tracer.DefaultManager.SetLog(*c.flags.log)
 
+	if os.Getenv("SUBTRACE_TOKEN") != "" && os.Getenv("SUBTRACE_LINK_ID_OVERRIDE") != "" {
+		slog.Debug("SUBTRACE_LINK_ID_OVERRIDE is ignored when SUBTRACE_TOKEN is set")
+	}
+
 	tracer.InitPublisher(ctx)
 	go tracer.DefaultManager.StartBackgroundFlush(ctx)
 	defer func() {

@@ -296,6 +296,10 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		}
 	}
 
+	if os.Getenv("SUBTRACE_TOKEN") != "" && os.Getenv("SUBTRACE_LINK_ID_OVERRIDE") != "" {
+		slog.Debug("SUBTRACE_LINK_ID_OVERRIDE is ignored when SUBTRACE_TOKEN is set")
+	}
+
 	tracer.InitPublisher(ctx)
 
 	go stats.Loop(ctx)
