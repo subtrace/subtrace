@@ -251,7 +251,7 @@ func (p *Parser) Finish() error {
 		return fmt.Errorf("encode json: %w", err)
 	}
 
-	if p.global.Devtools != nil {
+	if p.global.Devtools != nil && p.global.Devtools.HijackPath != "" {
 		go p.global.Devtools.Send(json)
 		return nil
 	}
