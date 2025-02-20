@@ -253,6 +253,7 @@ func (p *Parser) Finish() error {
 
 	if p.global.Devtools != nil {
 		go p.global.Devtools.Send(json)
+		return nil
 	}
 
 	var sendReflector, sendTunneler bool
