@@ -150,7 +150,7 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 			if _, msg, err := conn.Read(r.Context()); err != nil {
 				return
 			} else {
-				fmt.Printf("received: %s\n", msg)
+				slog.Debug("received unexpected message from local websocket", "size", len(msg))
 			}
 		}
 	}()
