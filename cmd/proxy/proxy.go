@@ -134,7 +134,10 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		slog.Debug("SUBTRACE_LINK_ID_OVERRIDE is ignored when SUBTRACE_TOKEN is set")
 	}
 
-	tracer.InitPublisher(ctx)
+	if os.Getenv("SUBTRACE_TOKEN") != "" || c.flags.devtools == "" {
+		go tracer.DefaultPublisher.Loop(ctx)
+	}
+
 	go tracer.DefaultManager.StartBackgroundFlush(ctx)
 	defer func() {
 		if err := tracer.DefaultManager.Flush(); err != nil {
