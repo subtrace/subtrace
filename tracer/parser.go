@@ -306,7 +306,7 @@ func (p *Parser) sendReflector(tags map[string]string, json []byte, loglines []s
 	}
 
 	select {
-	case defaultPublisher.ch <- b:
+	case DefaultPublisher.ch <- b:
 		return nil
 	default:
 		return fmt.Errorf("publisher channel buffer full")

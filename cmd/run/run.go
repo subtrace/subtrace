@@ -300,7 +300,9 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		slog.Debug("SUBTRACE_LINK_ID_OVERRIDE is ignored when SUBTRACE_TOKEN is set")
 	}
 
-	tracer.InitPublisher(ctx)
+	if os.Getenv("SUBTRACE_TOKEN") != "" || c.flags.devtools == "" {
+		go tracer.DefaultPublisher.Loop(ctx)
+	}
 
 	go stats.Loop(ctx)
 

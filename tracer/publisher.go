@@ -17,15 +17,10 @@ import (
 	"subtrace.dev/rpc"
 )
 
-var defaultPublisher *publisher
+var DefaultPublisher = &publisher{ch: make(chan []byte, 4096)}
 
 type publisher struct {
 	ch chan []byte
-}
-
-func InitPublisher(ctx context.Context) {
-	defaultPublisher = &publisher{ch: make(chan []byte, 4096)}
-	go defaultPublisher.loop(ctx)
 }
 
 func (p *publisher) dialSingle(ctx context.Context) (*websocket.Conn, string, error) {
@@ -173,7 +168,7 @@ func (p *publisher) showURL(val string) {
 	)
 }
 
-func (p *publisher) loop(ctx context.Context) {
+func (p *publisher) Loop(ctx context.Context) {
 	var conn *websocket.Conn
 	defer func() {
 		if conn != nil {
