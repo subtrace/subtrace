@@ -435,47 +435,41 @@ func (c *Command) forkChild() (pid int, sec *seccomp.Listener, err error) {
 		return 0, nil, fmt.Errorf("get executable: %w", err)
 	}
 
-	outfd := 1
-	errfd := 2
+	outfd := uintptr(1)
+	errfd := uintptr(2)
 
 	if journal.Enabled {
-		outpipe := make([]int, 2)
-		err := unix.Pipe(outpipe)
+		mout, sout, err := createPTY()
 		if err != nil {
-			return 0, nil, fmt.Errorf("stdout pipe: %w", err)
+			return 0, nil, fmt.Errorf("stdout pty: %w", err)
 		}
 
-		errpipe := make([]int, 2)
-		err = unix.Pipe(errpipe)
+		merr, serr, err := createPTY()
 		if err != nil {
-			return 0, nil, fmt.Errorf("stderr pipe: %w", err)
+			return 0, nil, fmt.Errorf("stderr pty: %w", err)
 		}
 
 		c.global.Journal = journal.New()
 
-		outfd = outpipe[1]
-		errfd = errpipe[1]
+		outfd = sout.Fd()
+		errfd = serr.Fd()
 
 		go func() {
-			outfile := os.NewFile(uintptr(outpipe[0]), "out")
-			defer outfile.Close()
 			for {
-				io.Copy(io.MultiWriter(os.Stdout, c.global.Journal.Stdout), outfile)
+				io.Copy(io.MultiWriter(os.Stdout, c.global.Journal.Stdout), mout)
 			}
 		}()
 
 		go func() {
-			errfile := os.NewFile(uintptr(errpipe[0]), "err")
-			defer errfile.Close()
 			for {
-				io.Copy(io.MultiWriter(os.Stderr, c.global.Journal.Stderr), errfile)
+				io.Copy(io.MultiWriter(os.Stderr, c.global.Journal.Stderr), merr)
 			}
 		}()
 	}
 
 	pid, err = syscall.ForkExec(self, os.Args, &syscall.ProcAttr{
 		Env:   append(os.Environ(), "_SUBTRACE_CHILD=true"),
-		Files: []uintptr{0, uintptr(outfd), uintptr(errfd), uintptr(memfd)},
+		Files: []uintptr{0, outfd, errfd, uintptr(memfd)},
 	})
 	if err != nil {
 		return 0, nil, fmt.Errorf("fork and exec: %w", err)
@@ -561,4 +555,30 @@ func (c *Command) entrypointChild(ctx context.Context, args []string) error {
 		return fmt.Errorf("execve: %w", err)
 	}
 	panic("unreachable")
+}
+
+func createPTY() (master, slave *os.File, err error) {
+	master, err = os.Open("/dev/ptmx")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var name int
+	_, _, errno := unix.Syscall(unix.SYS_IOCTL, master.Fd(), unix.TIOCGPTN, uintptr(unsafe.Pointer(&name)))
+	if errno != 0 {
+		return nil, nil, fmt.Errorf("get pts name: %w", errno)
+	}
+
+	var unlock int // A value of zero corresponds to unlocking the pts
+	_, _, errno = unix.Syscall(unix.SYS_IOCTL, master.Fd(), unix.TIOCSPTLCK, uintptr(unsafe.Pointer(&unlock)))
+	if errno != 0 {
+		return nil, nil, fmt.Errorf("unlock pts: %w", errno)
+	}
+
+	slave, err = os.OpenFile(fmt.Sprintf("/dev/pts/%d", name), unix.O_RDWR|unix.O_NOCTTY, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return master, slave, nil
 }
