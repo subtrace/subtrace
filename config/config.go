@@ -18,8 +18,9 @@ import (
 
 type Config struct {
 	parsed struct {
-		Tags  map[string]string `yaml:"tags"`
-		Rules []struct {
+		AuthCredentials string            `yaml:"authCredentials"`
+		Tags            map[string]string `yaml:"tags"`
+		Rules           []struct {
 			If   string `yaml:"if"`
 			Then string `yaml:"then"`
 		} `yaml:"rules"`
@@ -76,6 +77,15 @@ func (c *Config) Load(path string) error {
 
 	slog.Debug("parsed config", "rules", len(c.parsed.Rules), "tags", len(c.parsed.Tags))
 	return nil
+}
+
+func (c *Config) ShouldRedactAuth() bool {
+	switch c.parsed.AuthCredentials {
+	case "keep":
+		return false
+	default:
+		return true
+	}
 }
 
 func (c *Config) GetMatchingFilter(tags map[string]string, entry *har.Entry) (*filter.Filter, error) {
