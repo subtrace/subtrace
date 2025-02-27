@@ -79,7 +79,9 @@ func (p *Parser) UseRequest(req *http.Request) {
 		for i := range h.Headers {
 			switch strings.ToLower(h.Headers[i].Name) {
 			case "authorization", "cookie":
-				h.Headers[i].Value = "<redacted>"
+				if p.global.Config.ShouldRedactAuth() {
+					h.Headers[i].Value = "<redacted>"
+				}
 			}
 		}
 
@@ -145,7 +147,9 @@ func (p *Parser) UseResponse(resp *http.Response) {
 		for i := range h.Headers {
 			switch strings.ToLower(h.Headers[i].Name) {
 			case "set-cookie":
-				h.Headers[i].Value = "<redacted>"
+				if p.global.Config.ShouldRedactAuth() {
+					h.Headers[i].Value = "<redacted>"
+				}
 			}
 		}
 
