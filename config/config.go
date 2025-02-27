@@ -5,6 +5,8 @@ package config
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
@@ -79,12 +81,16 @@ func (c *Config) Load(path string) error {
 	return nil
 }
 
-func (c *Config) ShouldRedactAuth() bool {
+func (c *Config) SantizeCredential(val string) string {
 	switch c.parsed.AuthCredentials {
 	case "keep":
-		return false
+		return val
+	case "hash":
+		h := sha256.New()
+		h.Write([]byte(val))
+		return fmt.Sprintf("<redacted:sha256:%s>", hex.EncodeToString(h.Sum(nil)))
 	default:
-		return true
+		return "<redacted>"
 	}
 }
 
