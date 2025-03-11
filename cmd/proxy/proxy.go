@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/google/martian/v3"
+	"github.com/google/martian/v3/log"
 	"github.com/google/uuid"
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -144,6 +145,8 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 			slog.Error("failed to flush tracer event manager", "err", err)
 		}
 	}()
+
+	log.SetLevel(log.Silent)
 
 	c.global.Config = config.New()
 	if c.flags.config != "" {
