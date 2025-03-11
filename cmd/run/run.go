@@ -21,6 +21,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/google/martian/v3/log"
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
 	"golang.org/x/sys/unix"
@@ -376,6 +377,8 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 
 	eng := engine.New(c.global, sec, itab, root)
 	go eng.Start()
+
+	log.SetLevel(log.Silent)
 
 	var status unix.WaitStatus
 	if _, err := unix.Wait4(pid, &status, 0, nil); err != nil {
