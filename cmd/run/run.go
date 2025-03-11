@@ -560,7 +560,7 @@ func (c *Command) entrypointChild(ctx context.Context, args []string) error {
 func createPTY() (master, slave *os.File, err error) {
 	master, err = os.Open("/dev/ptmx")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("open /dev/ptmx: %w", err)
 	}
 
 	var name int
@@ -577,7 +577,7 @@ func createPTY() (master, slave *os.File, err error) {
 
 	slave, err = os.OpenFile(fmt.Sprintf("/dev/pts/%d", name), unix.O_RDWR|unix.O_NOCTTY, 0)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("open /dev/pts/%d: %w", name, err)
 	}
 
 	return master, slave, nil
