@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -47,6 +48,14 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "subtrace: error: %v\n", err)
 		os.Exit(1)
+	}
+
+	if runtime.GOOS == "darwin" && len(os.Args) >= 2 && os.Args[1] == "run" {
+		fmt.Fprintf(os.Stderr, "The `subtrace run` command is currently not supported on macOS.\n")
+		fmt.Fprintf(os.Stderr, "You can use the `subtrace proxy` command instead.\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "See https://docs.subtrace.dev/macos for more details.\n")
+		return
 	}
 
 	if err := c.Run(ctx); err != nil {
