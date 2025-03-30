@@ -25,6 +25,7 @@ import (
 	"subtrace.dev/event"
 	"subtrace.dev/global"
 	"subtrace.dev/tracer"
+	"tailscale.com/tsnet"
 )
 
 type proxy struct {
@@ -32,7 +33,9 @@ type proxy struct {
 	tmpl   *event.Event
 
 	process  *net.TCPConn
-	external *net.TCPConn
+	external net.Conn
+
+	tailscale *tsnet.Server
 
 	begin         time.Time
 	isOutgoing    bool
@@ -290,17 +293,35 @@ func (p *proxy) discardMulti(r ...io.Reader) error {
 
 // proxyHTTP proxies an HTTP connection between the client and server.
 func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
-	if !p.isOutgoing && p.global.Devtools != nil && p.global.Devtools.HijackPath != "" {
+	if p.tailscale != nil {
 		lis := newSimpleListener(cli)
 		defer lis.Close()
 
-		h := p.newHijacker(srv)
+		tm := p.newTailscaleModifier(srv)
 
 		mp := martian.NewProxy()
 		defer mp.Close()
 
-		mp.SetRequestModifier(h)
-		mp.SetRoundTripper(h)
+		mp.SetRequestModifier(tm)
+		mp.SetRoundTripper(tm)
+
+		if err := mp.Serve(lis); err != nil {
+			return fmt.Errorf("martian: serve: %w", err)
+		}
+		return nil
+	}
+
+	if !p.isOutgoing && p.global.Devtools != nil && p.global.Devtools.HijackPath != "" {
+		lis := newSimpleListener(cli)
+		defer lis.Close()
+
+		dh := p.newDevtoolsHijacker(srv)
+
+		mp := martian.NewProxy()
+		defer mp.Close()
+
+		mp.SetRequestModifier(dh)
+		mp.SetRoundTripper(dh)
 
 		if err := mp.Serve(lis); err != nil {
 			return fmt.Errorf("martian: serve: %w", err)
@@ -585,57 +606,130 @@ func (l *simpleListener) Addr() net.Addr {
 	return l.conn.LocalAddr()
 }
 
-type hijacker struct {
+type devtoolsHijacker struct {
 	proxy *proxy
 	begin time.Time
 	srv   net.Conn
 }
 
-var _ http.RoundTripper = new(hijacker)
+var _ http.RoundTripper = new(devtoolsHijacker)
 
-func (p *proxy) newHijacker(srv net.Conn) *hijacker {
-	return &hijacker{
+func (p *proxy) newDevtoolsHijacker(srv net.Conn) *devtoolsHijacker {
+	return &devtoolsHijacker{
 		proxy: p,
 		begin: time.Now(),
 		srv:   srv,
 	}
 }
 
-func (h *hijacker) ModifyRequest(req *http.Request) error {
-	if req.URL.Path == h.proxy.global.Devtools.HijackPath {
+func (dh *devtoolsHijacker) ModifyRequest(req *http.Request) error {
+	if req.URL.Path == dh.proxy.global.Devtools.HijackPath {
 		// We need to serve the devtools bundle by hijacking the client-side
 		// connection. As a result, this proxy will no longer be used for regular
 		// HTTP requests (i.e. non-devtools paths). Some programs such as Python's
 		// SimpleHTTPServer are single-threaded, which means they will be blocked
 		// until the last open connection finishes. As a result, we must first
 		// close the server-side connection before starting the Martian hijack.
-		h.srv.Close()
+		dh.srv.Close()
 
 		conn, brw, err := martian.NewContext(req).Session().Hijack()
 		if err != nil {
 			return fmt.Errorf("subtrace: failed to hijack devtools endpoint: %w", err)
 		}
-		h.proxy.global.Devtools.HandleHijack(req, conn, brw)
+		dh.proxy.global.Devtools.HandleHijack(req, conn, brw)
 	}
 
 	return nil
 }
 
-func (h *hijacker) RoundTrip(req *http.Request) (*http.Response, error) {
-	event := h.proxy.global.Config.GetEventTemplate()
+func (dh *devtoolsHijacker) RoundTrip(req *http.Request) (*http.Response, error) {
+	event := dh.proxy.global.Config.GetEventTemplate()
 	event.Set("event_id", uuid.New().String())
 
-	parser := tracer.NewParser(h.proxy.global, event)
+	parser := tracer.NewParser(dh.proxy.global, event)
 	parser.UseRequest(req)
 
 	tr := &http.Transport{
 		DisableKeepAlives: true,
 
 		DialContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
-			return h.srv, nil
+			return dh.srv, nil
 		},
 		Dial: func(network string, addr string) (net.Conn, error) {
-			return h.srv, nil
+			return dh.srv, nil
+		},
+		DialTLSContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
+			return nil, fmt.Errorf("invalid use of DialTLSContext in simpleRoundTripper")
+		},
+		DialTLS: func(network string, addr string) (net.Conn, error) {
+			return nil, fmt.Errorf("invalid use of DialTLS in simpleRoundTripper")
+		},
+	}
+
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+
+	parser.UseResponse(resp)
+	go func() {
+		if err := parser.Finish(); err != nil {
+			slog.Error("failed to finish HAR parser", "eventID", event.Get("event_id"), "err", err)
+		}
+	}()
+
+	return resp, err
+}
+
+type tailscaleModifier struct {
+	proxy     *proxy
+	begin     time.Time
+	srv       net.Conn
+	tailscale *tsnet.Server
+}
+
+var _ http.RoundTripper = new(tailscaleModifier)
+
+func (p *proxy) newTailscaleModifier(srv net.Conn) *tailscaleModifier {
+	return &tailscaleModifier{
+		proxy:     p,
+		begin:     time.Now(),
+		srv:       srv,
+		tailscale: p.tailscale,
+	}
+}
+
+func (tm *tailscaleModifier) ModifyRequest(req *http.Request) error {
+	lc, err := tm.tailscale.LocalClient()
+	if err != nil {
+		return fmt.Errorf("tailscale: get local client: %w", err)
+	}
+
+	who, err := lc.WhoIs(req.Context(), req.RemoteAddr)
+	if err != nil {
+		return fmt.Errorf("tailscale: query whois: %w", err)
+	}
+
+	req.Header.Set("x-subtrace-tailscale-node", who.Node.Name)
+	req.Header.Set("x-subtrace-tailscale-user", who.UserProfile.LoginName)
+	return nil
+}
+
+func (tm *tailscaleModifier) RoundTrip(req *http.Request) (*http.Response, error) {
+	event := tm.proxy.global.Config.GetEventTemplate()
+	event.Set("event_id", uuid.New().String())
+
+	parser := tracer.NewParser(tm.proxy.global, event)
+	parser.UseRequest(req)
+
+	tr := &http.Transport{
+		DisableKeepAlives: true,
+
+		DialContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
+			return tm.srv, nil
+		},
+		Dial: func(network string, addr string) (net.Conn, error) {
+			return tm.srv, nil
 		},
 		DialTLSContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
 			return nil, fmt.Errorf("invalid use of DialTLSContext in simpleRoundTripper")

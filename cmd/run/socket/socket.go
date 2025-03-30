@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"os"
 	"sync"
 	"syscall"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/event"
 	"subtrace.dev/global"
+	"tailscale.com/tsnet"
 )
 
 type Socket struct {
@@ -198,7 +200,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 			return
 		}
 		slog.Debug("connected to external", "sock", s, "addr", addr, "took", time.Since(proxy.begin).Nanoseconds()/1000)
-		proxy.external = conn.(*net.TCPConn)
+		proxy.external = conn
 	}()
 
 	errnoConnect := make(chan syscall.Errno, 1)
@@ -520,21 +522,52 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 
 	var lis net.Listener
 
-	switch s.Inode.Domain {
-	case unix.AF_INET:
-		if !bind.IsValid() {
-			lis, err = net.Listen("tcp4", "127.0.0.1:0")
-		} else {
-			lis, err = net.Listen("tcp4", bind.String())
+	var tailscale *tsnet.Server
+	if key := os.Getenv("SUBTRACE_TAILSCALE_KEY"); key != "" {
+		tailscale = new(tsnet.Server)
+		tailscale.AuthKey = key
+		tailscale.UserLogf = func(format string, args ...any) {}
+		tailscale.Logf = func(format string, args ...any) {}
+
+		ipn, err := tailscale.Up(context.Background())
+		if err != nil {
+			return 0, fmt.Errorf("tailscale: up: %w", err)
 		}
-	case unix.AF_INET6:
-		if !bind.IsValid() {
-			lis, err = net.Listen("tcp6", "[::1]:0")
-		} else if bind.Addr().IsUnspecified() {
-			// [::]:80 seems to listen on both IPv4 and IPv6 but 127.0.0.1:80 doesn't?
-			lis, err = net.Listen("tcp", bind.String())
-		} else {
-			lis, err = net.Listen("tcp6", bind.String())
+
+		switch s.Inode.Domain {
+		case unix.AF_INET:
+			for i := range ipn.TailscaleIPs {
+				if ipn.TailscaleIPs[i].Is4() {
+					lis, err = tailscale.Listen("tcp4", netip.AddrPortFrom(ipn.TailscaleIPs[i], bind.Port()).String())
+					break
+				}
+			}
+		case unix.AF_INET6:
+			for i := range ipn.TailscaleIPs {
+				if ipn.TailscaleIPs[i].Is6() {
+					lis, err = tailscale.Listen("tcp6", netip.AddrPortFrom(ipn.TailscaleIPs[i], bind.Port()).String())
+					break
+				}
+			}
+		}
+
+	} else {
+		switch s.Inode.Domain {
+		case unix.AF_INET:
+			if !bind.IsValid() {
+				lis, err = net.Listen("tcp4", "127.0.0.1:0")
+			} else {
+				lis, err = net.Listen("tcp4", bind.String())
+			}
+		case unix.AF_INET6:
+			if !bind.IsValid() {
+				lis, err = net.Listen("tcp6", "[::1]:0")
+			} else if bind.Addr().IsUnspecified() {
+				// [::]:80 seems to listen on both IPv4 and IPv6 but 127.0.0.1:80 doesn't?
+				lis, err = net.Listen("tcp", bind.String())
+			} else {
+				lis, err = net.Listen("tcp6", bind.String())
+			}
 		}
 	}
 	if err != nil {
@@ -574,12 +607,16 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 		defer lis.Close()
 		defer next.listening.active.Store(false)
 		defer close(buffer)
+		if tailscale != nil {
+			defer tailscale.Close()
+		}
 		for {
 			external, err := lis.Accept()
 			switch {
 			case err == nil:
 				p := newProxy(s.global, s.tmpl, false)
-				p.external = external.(*net.TCPConn)
+				p.external = external
+				p.tailscale = tailscale
 				buffer <- p
 			case errors.Is(err, net.ErrClosed):
 				return
