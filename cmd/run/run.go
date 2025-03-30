@@ -397,17 +397,8 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 func (c *Command) watchSignals() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, unix.SIGINT, unix.SIGTERM, unix.SIGQUIT)
-	for {
-		var code string
-		switch <-ch {
-		case unix.SIGINT:
-			code = "SIGINT"
-		case unix.SIGTERM:
-			code = "SIGTERM"
-		case unix.SIGQUIT:
-			code = "SIGQUIT"
-		}
-		slog.Debug("received signal", "code", code)
+	for code := range ch {
+		slog.Debug("tracer received signal", "code", code.String())
 	}
 }
 
