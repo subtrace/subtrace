@@ -64,14 +64,17 @@ jobs:
           done
         done
 
-        sudo apt update && sudo apt install -y python3-build twine
+        echo "installing pypi package build deps"
+        pip3 install build twine --break-system-packages
+        python3 -m build --version
+        python3 -m twine --version
 
         echo "building pypi package"
         cd ./etc/python
         for f in * subtrace/*; do sha256sum $f 2>/dev/null || true; done
         make wheel
         sha256sum dist/*
-        TWINE_USERNAME=__token__ TWINE_PASSWORD=${{ secrets.SUBTRACE_PYPI_API_TOKEN }} twine upload dist/*
+        TWINE_USERNAME=__token__ TWINE_PASSWORD=${{ secrets.SUBTRACE_PYPI_API_TOKEN }} python3 -m twine upload dist/*
         cd ../..
 
         echo "building node package"
