@@ -1,6 +1,6 @@
 module subtrace.dev
 
-go 1.23.3
+go 1.24.1
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.30.0
