@@ -275,6 +275,10 @@ func (p *Parser) Finish() error {
 	if sendTunneler {
 		ev := p.event.Copy()
 		ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(json))
+		ev.Set("har_time", fmt.Sprintf("%d", entry.Time))
+		ev.Set("har_request_method", entry.Request.Method)
+		ev.Set("har_request_url", entry.Request.URL)
+		ev.Set("har_response_status", fmt.Sprintf("%d", entry.Response.Status))
 		DefaultManager.Insert(ev.String())
 	}
 	return nil
