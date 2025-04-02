@@ -251,6 +251,14 @@ func (p *Parser) Finish() error {
 		return fmt.Errorf("encode json: %w", err)
 	}
 
+	if DefaultManager.log.Load() {
+		method := entry.Request.Method
+		if len(method) > 3 {
+			method = method[:3]
+		}
+		fmt.Fprintf(os.Stderr, "%s  |  %d %3s %q\n", time.Now().UTC().Format("2006-01-02 15:04:05.999 UTC"), entry.Response.Status, method, entry.Request.URL)
+	}
+
 	if p.global.Devtools != nil && p.global.Devtools.HijackPath != "" {
 		go p.global.Devtools.Send(json)
 		return nil

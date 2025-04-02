@@ -236,10 +236,6 @@ func (m *Manager) finalize(b *block) error {
 }
 
 func (m *Manager) Insert(event string) {
-	if m.log.Load() {
-		fmt.Fprintf(os.Stderr, "%s\n", event)
-	}
-
 	var next *block
 	for {
 		cur := m.cur.Load()
