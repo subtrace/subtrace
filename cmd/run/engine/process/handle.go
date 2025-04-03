@@ -322,12 +322,26 @@ func (p *Process) handleSocket(n *seccomp.Notif, domain, typ, protocol int) erro
 	if protocol == unix.IPPROTO_IP {
 		protocol = unix.IPPROTO_TCP // see /usr/include/linux/in.h
 	}
-	if protocol != unix.IPPROTO_TCP {
+	if protocol != unix.IPPROTO_TCP && protocol != unix.IPPROTO_MPTCP {
 		return n.Skip()
 	}
 
-	sock, err := socket.CreateSocket(p.global, p.getEventTemplate().Copy(), domain, typ)
+	sock, err := socket.CreateSocket(p.global, p.getEventTemplate().Copy(), domain, typ, protocol)
+
+	var errno syscall.Errno
 	if err != nil {
+
+		// If the target is trying to create a MPTCP socket and it fails because it's unsupported,
+		// we should let the kernel handle it so the target program can (say) gracefully fallback
+		// to regular TCP.
+		if protocol == unix.IPPROTO_MPTCP && errors.As(err, &errno) {
+			// ref: https://github.com/torvalds/linux/blob/a2cc6ff5ec8f91bc463fd3b0c26b61166a07eb11/Documentation/networking/mptcp.rst#creating-mptcp-sockets
+			switch errno {
+			case unix.EINVAL, unix.ENOPROTOOPT, unix.EPROTONOSUPPORT:
+				return n.Skip()
+			}
+		}
+
 		return fmt.Errorf("create new socket: %w", err)
 	}
 	if err := p.installSocket(n, sock, typ&unix.SOCK_CLOEXEC); err != nil {
@@ -448,7 +462,7 @@ func (p *Process) handleAccept(n *seccomp.Notif, fd int, addrPtr uintptr, addrSi
 
 // handleGetsockopt handles the getsockopt(2) syscall to emulate SO_ERROR.
 func (p *Process) handleGetsockopt(n *seccomp.Notif, fd int, level int, name int, valPtr uintptr, valSizePtr uintptr) error {
-	if level != unix.SOL_SOCKET || name != unix.SO_ERROR {
+	if (level != unix.SOL_SOCKET && level != unix.SOL_MPTCP) || name != unix.SO_ERROR {
 		return n.Skip()
 	}
 

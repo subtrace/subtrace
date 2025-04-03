@@ -34,9 +34,12 @@ func NewSocket(global *global.Global, tmpl *event.Event, inode *Inode, fd *fd.FD
 	return sock
 }
 
-func CreateSocket(global *global.Global, tmpl *event.Event, domain int, typ int) (*Socket, error) {
+func CreateSocket(global *global.Global, tmpl *event.Event, domain int, typ int, protocol int) (*Socket, error) {
 	if domain != unix.AF_INET && domain != unix.AF_INET6 {
 		return nil, fmt.Errorf("unsupported domain 0x%x", domain)
+	}
+	if protocol != unix.IPPROTO_TCP && protocol != unix.IPPROTO_MPTCP {
+		return nil, fmt.Errorf("unsupported protocol 0x%x", protocol)
 	}
 
 	// Explicitly add SOCK_CLOEXEC because even if the target process didn't ask
@@ -45,7 +48,7 @@ func CreateSocket(global *global.Global, tmpl *event.Event, domain int, typ int)
 	// CLOEXEC flag will be set so that the target's expectation is satisfied.
 	typ |= unix.SOCK_CLOEXEC
 
-	ret, err := unix.Socket(domain, typ, unix.IPPROTO_TCP)
+	ret, err := unix.Socket(domain, typ, protocol)
 	if err != nil {
 		return nil, fmt.Errorf("socket syscall: %w", err)
 	}
@@ -60,7 +63,7 @@ func CreateSocket(global *global.Global, tmpl *event.Event, domain int, typ int)
 	defer fd.DecRef()
 
 	state := &ImmutableState{state: StatePassive}
-	sock := NewSocket(global, tmpl, newInode(domain, stat.Ino, state), fd)
+	sock := NewSocket(global, tmpl, newInode(domain, protocol, stat.Ino, state), fd)
 	slog.Debug("created socket", "method", "new", "sock", sock)
 
 	return sock, nil
@@ -117,7 +120,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 
 	if mid.connecting.bind == nil {
 		var err error
-		mid.connecting.bind, err = newTempBindSocket(s.Inode.Domain)
+		mid.connecting.bind, err = newTempBindSocket(s.Inode.Domain, s.Inode.Protocol)
 		if err != nil {
 			return 0, fmt.Errorf("create temp bind socket: %w", err)
 		}
@@ -143,7 +146,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 	}
 
 	dummyCtx, dummyCancel := context.WithCancel(context.Background())
-	dummy, err := newDummyListener(dummyCtx, s.Inode.Domain)
+	dummy, err := newDummyListener(dummyCtx, s.Inode.Domain, s.Inode.Protocol)
 	if err != nil {
 		dummyCancel()
 		return 0, fmt.Errorf("create dummy listener: %w", err)
@@ -189,6 +192,16 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 		}
 		if bind.IsValid() {
 			d.LocalAddr = &net.TCPAddr{IP: bind.Addr().AsSlice(), Port: int(bind.Port())}
+		}
+
+		usemptcp := false
+		switch s.Inode.Protocol {
+		case unix.IPPROTO_TCP:
+		case unix.IPPROTO_MPTCP:
+			usemptcp = true
+		}
+		if usemptcp {
+			d.SetMultipathTCP(true)
 		}
 
 		conn, err := d.DialContext(context.TODO(), "tcp", addr.String())
@@ -404,7 +417,7 @@ func (s *Socket) Bind(addr netip.AddrPort) (syscall.Errno, error) {
 	next.passive.bind = prev.passive.bind
 	if next.passive.bind == nil {
 		var err error
-		next.passive.bind, err = newTempBindSocket(s.Inode.Domain)
+		next.passive.bind, err = newTempBindSocket(s.Inode.Domain, s.Inode.Protocol)
 		if err != nil {
 			return 0, fmt.Errorf("create temp bind socket: %w", err)
 		}
@@ -518,23 +531,34 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 		return errno, nil
 	}
 
+	usemptcp := false
+	switch s.Inode.Protocol {
+	case unix.IPPROTO_TCP:
+	case unix.IPPROTO_MPTCP:
+		usemptcp = true
+	}
+	conf := new(net.ListenConfig)
+	if usemptcp {
+		conf.SetMultipathTCP(true)
+	}
+
 	var lis net.Listener
 
 	switch s.Inode.Domain {
 	case unix.AF_INET:
 		if !bind.IsValid() {
-			lis, err = net.Listen("tcp4", "127.0.0.1:0")
+			lis, err = conf.Listen(context.Background(), "tcp4", "127.0.0.1:0")
 		} else {
-			lis, err = net.Listen("tcp4", bind.String())
+			lis, err = conf.Listen(context.Background(), "tcp4", bind.String())
 		}
 	case unix.AF_INET6:
 		if !bind.IsValid() {
-			lis, err = net.Listen("tcp6", "[::1]:0")
+			lis, err = conf.Listen(context.Background(), "tcp6", "[::1]:0")
 		} else if bind.Addr().IsUnspecified() {
 			// [::]:80 seems to listen on both IPv4 and IPv6 but 127.0.0.1:80 doesn't?
-			lis, err = net.Listen("tcp", bind.String())
+			lis, err = conf.Listen(context.Background(), "tcp", bind.String())
 		} else {
-			lis, err = net.Listen("tcp6", bind.String())
+			lis, err = conf.Listen(context.Background(), "tcp6", bind.String())
 		}
 	}
 	if err != nil {
@@ -593,7 +617,12 @@ func (s *Socket) Listen(backlog int) (syscall.Errno, error) {
 	go func() { // dispatch loop
 		for p := range buffer {
 			go func(p *proxy) {
-				process, err := net.Dial("tcp", ephemeral.String())
+				dialer := new(net.Dialer)
+				if usemptcp {
+					dialer.SetMultipathTCP(true)
+				}
+
+				process, err := dialer.Dial("tcp", ephemeral.String())
 				if err != nil {
 					p.external.Close()
 					slog.Debug("failed to dial ephemeral address", "err", err) // not fatal: the process probably exited
@@ -683,7 +712,7 @@ func (s *Socket) Accept(flags int) (*Socket, syscall.Errno, error) {
 
 	state := &ImmutableState{state: StateConnected}
 	state.connected.proxy = p
-	child := NewSocket(s.global, s.tmpl, newInode(s.Inode.Domain, stat.Ino, state), fd)
+	child := NewSocket(s.global, s.tmpl, newInode(s.Inode.Domain, s.Inode.Protocol, stat.Ino, state), fd)
 	slog.Debug("created socket", "method", "accept", "sock", child)
 
 	go p.start()
@@ -782,7 +811,7 @@ type dummyListener struct {
 	addr netip.AddrPort
 }
 
-func newDummyListener(ctx context.Context, domain int) (*dummyListener, error) {
+func newDummyListener(ctx context.Context, domain int, protocol int) (*dummyListener, error) {
 	var addr netip.AddrPort
 	var network string
 	switch domain {
@@ -794,7 +823,18 @@ func newDummyListener(ctx context.Context, domain int) (*dummyListener, error) {
 		addr = netip.AddrPortFrom(netip.AddrFrom16([16]byte{15: 1}), 0)
 	}
 
-	lis, err := new(net.ListenConfig).Listen(ctx, network, addr.String())
+	usemptcp := false
+	switch protocol {
+	case unix.IPPROTO_TCP:
+	case unix.IPPROTO_MPTCP:
+		usemptcp = true
+	}
+	conf := new(net.ListenConfig)
+	if usemptcp {
+		conf.SetMultipathTCP(true)
+	}
+
+	lis, err := conf.Listen(ctx, network, addr.String())
 	if err != nil {
 		return nil, fmt.Errorf("listen: %w", err)
 	}
@@ -820,8 +860,12 @@ func (d *dummyListener) sockaddr() unix.Sockaddr {
 
 // newTempBindSocket creates a temporary socket to use as a parking spot for an
 // address bind. The returned socket has SO_REUSEADDR and SO_REUSEPORT set to 1.
-func newTempBindSocket(domain int) (*fd.FD, error) {
-	ret, err := unix.Socket(domain, unix.SOCK_STREAM, unix.IPPROTO_TCP)
+func newTempBindSocket(domain int, protocol int) (*fd.FD, error) {
+	if protocol != unix.IPPROTO_TCP && protocol != unix.IPPROTO_MPTCP {
+		return nil, fmt.Errorf("unsupported protocol 0x%x", protocol)
+	}
+
+	ret, err := unix.Socket(domain, unix.SOCK_STREAM, protocol)
 	if err != nil {
 		return nil, fmt.Errorf("create temp bind socket: %w", err)
 	}

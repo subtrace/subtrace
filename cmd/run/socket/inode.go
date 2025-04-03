@@ -104,8 +104,9 @@ func (s *ImmutableState) getRemotePeerAddr() (netip.AddrPort, syscall.Errno, err
 }
 
 type Inode struct {
-	Domain int
-	Number uint64
+	Domain   int
+	Protocol int
+	Number   uint64
 
 	state *atomic.Pointer[ImmutableState]
 
@@ -113,12 +114,12 @@ type Inode struct {
 	open []*Socket
 }
 
-func newInode(domain int, number uint64, state *ImmutableState) *Inode {
+func newInode(domain int, protocol int, number uint64, state *ImmutableState) *Inode {
 	if state == nil {
 		panic(fmt.Errorf("new inode: %d: missing state", number))
 	}
 
-	ino := &Inode{Domain: domain, Number: number, state: new(atomic.Pointer[ImmutableState])}
+	ino := &Inode{Domain: domain, Protocol: protocol, Number: number, state: new(atomic.Pointer[ImmutableState])}
 	ino.state.Store(state)
 	return ino
 }
@@ -151,12 +152,21 @@ func (ino *Inode) LogValue() slog.Value {
 		domain = "AF_INET6"
 	}
 
+	var protocol string
+	switch ino.Protocol {
+	case unix.IPPROTO_TCP:
+		protocol = "IPPROTO_TCP"
+	case unix.IPPROTO_MPTCP:
+		protocol = "IPPROTO_MPTCP"
+	}
+
 	ino.mu.RLock()
 	open := len(ino.open)
 	ino.mu.RUnlock()
 
 	return slog.GroupValue(append([]slog.Attr{
 		slog.String("domain", domain),
+		slog.String("protocol", protocol),
 		slog.Uint64("number", ino.Number),
 		slog.Int("open", open),
 		slog.String("state", state),
