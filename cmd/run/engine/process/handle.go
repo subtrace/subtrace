@@ -319,10 +319,18 @@ func (p *Process) handleSocket(n *seccomp.Notif, domain, typ, protocol int) erro
 	if typ&unix.SOCK_STREAM == 0 {
 		return n.Skip()
 	}
-	if protocol == unix.IPPROTO_IP {
+
+	switch protocol {
+	case unix.IPPROTO_IP:
 		protocol = unix.IPPROTO_TCP // see /usr/include/linux/in.h
-	}
-	if protocol != unix.IPPROTO_TCP {
+	case unix.IPPROTO_MPTCP:
+		// We currently don't support MPTCP, so behave as the kernel does in this situation [1].
+		// Most applications will fallback to regular TCP, so this is fine. If an application relies on
+		// MPTCP without a fallback to TCP, this *will* break them.
+		//
+		// [1] https://github.com/torvalds/linux/blob/a2cc6ff5ec8f91bc463fd3b0c26b61166a07eb11/Documentation/networking/mptcp.rst#creating-mptcp-sockets
+		return n.Return(0, unix.EPROTONOSUPPORT)
+	default:
 		return n.Skip()
 	}
 
