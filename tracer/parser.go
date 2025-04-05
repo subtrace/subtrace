@@ -240,7 +240,12 @@ func (p *Parser) Finish() error {
 		p.event.Set(k, v)
 	}
 
-	tags := p.event.Map()
+	// The event template may have changed since the process started because we add some
+	// tags asynchronously. Grab an updated copy of the template to account for these new
+	// tags.
+	tmpl := p.global.Config.GetEventTemplate()
+	tmpl.CopyFrom(p.event)
+	tags := tmpl.Map()
 
 	if !p.include(tags, entry) {
 		return nil
@@ -263,6 +268,8 @@ func (p *Parser) Finish() error {
 		go p.global.Devtools.Send(json)
 		return nil
 	}
+
+	fmt.Printf("%v\n", tags)
 
 	var sendReflector, sendTunneler bool
 	switch strings.ToLower(os.Getenv("SUBTRACE_REFLECTOR")) {
