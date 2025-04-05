@@ -2,6 +2,7 @@ package tags
 
 import (
 	"os"
+	"strings"
 
 	"subtrace.dev/event"
 	"subtrace.dev/tags/cloudtags"
@@ -24,9 +25,13 @@ func SetLocalTagsAsync(tmpl *event.Event) {
 	cloudBarrier := make(chan struct{})
 	go func() {
 		defer close(cloudBarrier)
-		if cloud = cloudtags.GuessCloudDMI(); cloud == cloudtags.CloudUnknown {
-			cloud = cloudtags.GuessCloudIMDS()
+		if cloud = cloudtags.GuessCloudEnv(); cloud != cloudtags.CloudUnknown {
+			return
 		}
+		if cloud = cloudtags.GuessCloudDMI(); cloud != cloudtags.CloudUnknown {
+			return
+		}
+		cloud = cloudtags.GuessCloudIMDS()
 	}()
 
 	go func() {
@@ -37,6 +42,26 @@ func SetLocalTagsAsync(tmpl *event.Event) {
 			if project, err := c.Get("/computeMetadata/v1/project/project-id"); err == nil {
 				tmpl.Set("gcp_project", project)
 			}
+
+		case cloudtags.CloudFly:
+			flytags := new(event.Event)
+			for _, name := range []string{"FLY_MACHINE_ID", "FLY_REGION", "FLY_PUBLIC_IP"} {
+				if val := os.Getenv(name); val != "" {
+					flytags.Set(strings.ToLower(name), val)
+				}
+			}
+
+			tmpl.CopyFrom(flytags)
+
+		case cloudtags.CloudPorter:
+			portertags := new(event.Event)
+			for _, name := range []string{"PORTER_NODE_NAME", "PORTER_POD_NAME", "PORTER_POD_REVISION", "PORTER_APP_SERVICE_NAME"} {
+				if val := os.Getenv(name); val != "" {
+					portertags.Set(strings.ToLower(name), val)
+				}
+			}
+
+			tmpl.CopyFrom(portertags)
 		}
 	}()
 
