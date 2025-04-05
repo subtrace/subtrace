@@ -15,6 +15,8 @@ const (
 	CloudAWS
 	CloudGCP
 	CloudAzure
+	CloudFly
+	CloudPorter
 )
 
 func readDMI(name string) string {
@@ -49,6 +51,19 @@ func GuessCloudDMI() int {
 		return CloudGCP
 	case val == "Microsoft Corporation":
 		return CloudAzure
+	}
+
+	return CloudUnknown
+}
+
+// GuessCloudEnv uses env var heuristics to guess the cloud provider.
+func GuessCloudEnv() int {
+	if os.Getenv("FLY_MACHINE_ID") != "" && os.Getenv("FLY_REGION") != "" {
+		return CloudFly
+	}
+
+	if os.Getenv("PORTER_NODE_NAME") != "" && os.Getenv("PORTER_APP_SERVICE_NAME") != "" {
+		return CloudPorter
 	}
 
 	return CloudUnknown
