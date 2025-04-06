@@ -269,8 +269,6 @@ func (p *Parser) Finish() error {
 		return nil
 	}
 
-	fmt.Printf("%v\n", tags)
-
 	var sendReflector, sendTunneler bool
 	switch strings.ToLower(os.Getenv("SUBTRACE_REFLECTOR")) {
 	case "1", "t", "true", "y", "yes":
