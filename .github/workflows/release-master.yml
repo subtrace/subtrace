@@ -67,6 +67,22 @@ jobs:
           done
         done
 
+        echo "docker login"
+        docker login ghcr.io -u "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}"
+
+        echo "building init image"
+        docker buildx create --use
+        time docker buildx build --push \
+            --progress plain \
+            --platform linux/amd64,linux/arm64 \
+            --tag ghcr.io/subtrace/init:${version} \
+            --tag ghcr.io/subtrace/init:latest \
+            --file - . <<'EOF'
+        FROM busybox:1.37.0
+        ARG TARGETARCH
+        COPY subtrace-linux-${TARGETARCH} /subtrace
+        EOF
+
         echo "installing pypi build deps"
         pip3 install build twine --break-system-packages
         python3 -m build --version
