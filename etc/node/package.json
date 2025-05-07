@@ -2,6 +2,9 @@
   "name": "subtrace",
   "version": "0.0.0",
   "gypfile": true,
+  "bin": {
+    "subtrace": "exec.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/subtrace/subtrace.git"
