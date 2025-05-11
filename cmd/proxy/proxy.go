@@ -56,6 +56,7 @@ func NewCommand() *ffcli.Command {
 	c.FlagSet.StringVar(&c.flags.devtools, "devtools", "", "path to serve the chrome devtools bundle on")
 	c.flags.log = c.FlagSet.Bool("log", false, "if true, log trace events to stderr")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
+	c.FlagSet.StringVar(&logging.Logfile, "logfile", "", "file for debug logs (stdout if unspecified)")
 	c.UsageFunc = func(fc *ffcli.Command) string {
 		return ffcli.DefaultUsageFunc(fc) + ExtraHelp()
 	}
@@ -79,7 +80,10 @@ func ExtraHelp() string {
 }
 
 func (c *Command) entrypoint(ctx context.Context, args []string) error {
-	logging.Init()
+	if err := logging.Init(); err != nil {
+		return fmt.Errorf("init logging: %w", err)
+	}
+
 	slog.Debug("starting subtrace proxy", "release", version.Release, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
 
 	if len(args) == 0 {

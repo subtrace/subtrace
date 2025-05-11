@@ -4,6 +4,7 @@
 package logging
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -12,8 +13,9 @@ import (
 )
 
 var Verbose bool
+var Logfile string
 
-func Init() {
+func Init() error {
 	_, path, _, _ := runtime.Caller(0)
 	prefix := strings.TrimSuffix(path, "/logging/logging.go")
 
@@ -43,5 +45,16 @@ func Init() {
 			return attr
 		},
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, opts)))
+
+	out := os.Stdout
+	if Logfile != "" {
+		f, err := os.OpenFile(Logfile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return fmt.Errorf("create logfile: %w", err)
+		}
+		out = f
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(out, opts)))
+
+	return nil
 }

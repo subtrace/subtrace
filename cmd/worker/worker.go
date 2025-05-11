@@ -59,6 +59,7 @@ func NewCommand() *ffcli.Command {
 
 	c.FlagSet = flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ContinueOnError)
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
+	c.FlagSet.StringVar(&logging.Logfile, "logfile", "", "file for debug logs (stdout if unspecified)")
 	c.FlagSet.StringVar(&c.flags.clickhouse.host, "clickhouse-host", "localhost", "clickhouse host")
 	c.FlagSet.StringVar(&c.flags.clickhouse.database, "clickhouse-database", "subtrace", "clickhouse database")
 
@@ -68,7 +69,9 @@ func NewCommand() *ffcli.Command {
 }
 
 func (c *Command) entrypoint(ctx context.Context, args []string) error {
-	logging.Init()
+	if err := logging.Init(); err != nil {
+		return fmt.Errorf("init logging: %w", err)
+	}
 
 	if val := os.Getenv("SUBTRACE_TOKEN"); val == "" {
 		return fmt.Errorf("SUBTRACE_TOKEN is empty")

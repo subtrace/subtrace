@@ -61,6 +61,7 @@ func NewCommand() *ffcli.Command {
 	t.FlagSet.Var(&t.flags.filters, "filter", "list of filters (multiple okay)")
 	t.FlagSet.StringVar(&t.flags.format, "format", "text", "either text (default) or json")
 	t.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose logging")
+	t.FlagSet.StringVar(&logging.Logfile, "logfile", "", "file for debug logs (stdout if unspecified)")
 
 	t.Options = []ff.Option{ff.WithEnvVarPrefix("SUBTRACE_TAIL")}
 	t.Exec = t.entrypoint
@@ -68,7 +69,9 @@ func NewCommand() *ffcli.Command {
 }
 
 func (t *Tail) entrypoint(ctx context.Context, args []string) error {
-	logging.Init()
+	if err := logging.Init(); err != nil {
+		return fmt.Errorf("init logging: %w", err)
+	}
 
 	if os.Getenv("SUBTRACE_TOKEN") == "" {
 		fmt.Fprintf(os.Stderr, "subtrace: error: missing SUBTRACE_TOKEN")

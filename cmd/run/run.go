@@ -71,6 +71,7 @@ func NewCommand() *ffcli.Command {
 	c.FlagSet.StringVar(&c.flags.pprof, "pprof", "", "write pprof CPU profile to file")
 	c.FlagSet.BoolVar(&journal.Enabled, "tracelogs", false, "trace stdout and stderr logs")
 	c.FlagSet.BoolVar(&logging.Verbose, "v", false, "enable verbose debug logging")
+	c.FlagSet.StringVar(&logging.Logfile, "logfile", "", "file for debug logs (stdout if unspecified)")
 	c.UsageFunc = func(fc *ffcli.Command) string {
 		return ffcli.DefaultUsageFunc(fc) + ExtraHelp()
 	}
@@ -114,7 +115,9 @@ func ExtraHelp() string {
 }
 
 func (c *Command) entrypoint(ctx context.Context, args []string) error {
-	logging.Init()
+	if err := logging.Init(); err != nil {
+		return fmt.Errorf("init logging: %w", err)
+	}
 
 	if len(args) == 0 {
 		// Log to stdout so that the usage and help text is greppable (see [1]).
