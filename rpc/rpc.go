@@ -48,7 +48,6 @@ func WithTag(key string, val string) Option {
 
 var defaultOptions = []Option{
 	WithToken(),
-	WithTag("subtrace_client_version", version.GetCanonicalString()),
 }
 
 func GetHeader(opts ...Option) http.Header {
@@ -72,6 +71,8 @@ func Call[R any, PR ptr[R]](ctx context.Context, w proto.Message, path string, r
 	if err != nil {
 		return 0, fmt.Errorf("new request: %w", err)
 	}
+
+	opts = append(opts, WithTag("subtrace_client_version", version.GetCanonicalString()))
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(req)
 	}
