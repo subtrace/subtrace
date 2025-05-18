@@ -13,13 +13,18 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/martian/v3"
 	"github.com/google/uuid"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/hpack"
 	"golang.org/x/sys/unix"
 	"subtrace.dev/cmd/run/tls"
 	"subtrace.dev/event"
@@ -265,8 +270,12 @@ func (p *proxy) proxyHTTP(cli, srv *bufConn) error {
 	case "http/1":
 		return p.proxyHTTP1(cli, srv)
 	case "http/2":
-		// TODO: reintroduce HTTP/2 support
-		return p.proxyFallback(cli, srv)
+		switch strings.ToLower(os.Getenv("SUBTRACE_HTTP2")) {
+		case "1", "y", "yes", "t", "true":
+			return p.proxyHTTP2(cli, srv)
+		default:
+			return p.proxyFallback(cli, srv)
+		}
 	default:
 		return p.proxyFallback(cli, srv)
 	}
@@ -398,6 +407,283 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 		return fmt.Errorf("proxy http: %w", err)
 	}
 	return nil
+}
+
+type http2Stream struct {
+	streamID uint32
+
+	event  *event.Event
+	parser *tracer.Parser
+
+	active sync.WaitGroup
+
+	req struct {
+		*http.Request
+		buf *io.PipeWriter
+	}
+
+	resp struct {
+		*http.Response
+		buf *io.PipeWriter
+	}
+}
+
+func (p *proxy) newHTTP2Stream(streamID uint32) *http2Stream {
+	event := p.global.Config.GetEventTemplate()
+	event.Set("event_id", uuid.New().String())
+
+	st := new(http2Stream)
+	st.streamID = streamID
+
+	st.event = event
+	st.parser = tracer.NewParser(p.global, event)
+
+	st.active.Add(2)
+
+	r1, w1 := io.Pipe()
+	st.req.Request = new(http.Request)
+	st.req.Request.Proto = "HTTP/2"
+	st.req.Request.ProtoMajor = 2
+	st.req.Request.ProtoMinor = 0
+	st.req.Request.URL = new(url.URL)
+	st.req.Request.Header = make(http.Header)
+	st.req.Request.Body = r1
+	st.req.buf = w1
+
+	r2, w2 := io.Pipe()
+	st.resp.Response = new(http.Response)
+	st.resp.Response.Proto = "HTTP/2"
+	st.resp.Response.ProtoMajor = 2
+	st.resp.Response.ProtoMinor = 0
+	st.resp.Header = make(http.Header)
+	st.resp.Body = r2
+	st.resp.buf = w2
+
+	go func() {
+		st.active.Wait()
+		if err := st.parser.Finish(); err != nil {
+			slog.Error("failed to finish HAR parser", "eventID", st.event.Get("event_id"), "err", err)
+		}
+	}()
+
+	return st
+}
+
+func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
+	preface := make([]byte, len(http2.ClientPreface))
+	if _, err := io.ReadFull(cli, preface); err != nil {
+		return fmt.Errorf("read preface: %w", err)
+	}
+	if string(preface) != http2.ClientPreface {
+		return fmt.Errorf("bad preface")
+	}
+	if _, err := srv.Write(preface); err != nil {
+		return fmt.Errorf("write preface: %w", err)
+	}
+
+	csr := http2.NewFramer(nil, cli)
+	scr := http2.NewFramer(nil, srv)
+	csw := http2.NewFramer(srv, nil)
+	scw := http2.NewFramer(cli, nil)
+
+	var mu sync.Mutex
+	state := make(map[uint32]*http2Stream)
+
+	getStream := func(streamID uint32) *http2Stream {
+		mu.Lock()
+		defer mu.Unlock()
+
+		st, ok := state[streamID]
+		if !ok {
+			st = p.newHTTP2Stream(streamID)
+			state[streamID] = st
+			go func() {
+				st.active.Wait()
+				mu.Lock()
+				defer mu.Unlock()
+				delete(state, streamID)
+			}()
+		}
+		return st
+	}
+
+	copySingle := func(src *http2.Framer, dst *http2.Framer, isClient bool) error {
+		dec := hpack.NewDecoder(4096, nil)
+		for {
+			fr, err := src.ReadFrame()
+			if err != nil {
+				return fmt.Errorf("read frame: %w", err)
+			}
+
+			switch fr := fr.(type) {
+			case *http2.HeadersFrame:
+				st := getStream(fr.StreamID)
+
+				headers, err := dec.DecodeFull(fr.HeaderBlockFragment())
+				if err != nil {
+					return fmt.Errorf("%T: decode fields: %w", fr, err)
+				}
+
+				for _, hdr := range headers {
+					switch hdr.Name {
+					case ":method":
+						st.req.Method = hdr.Value
+					case ":path":
+						st.req.URL.RawPath = hdr.Value
+						st.req.URL.Path = hdr.Value
+					case ":scheme":
+					case ":authority":
+					case ":status":
+						code := 0
+						for i := 0; i < len(hdr.Value); i++ {
+							if hdr.Value[i] < '0' || hdr.Value[i] > '9' {
+								break
+							}
+							code *= 10
+							code += int(byte(hdr.Value[i])) - int(byte('0'))
+						}
+						st.resp.StatusCode = code
+						st.resp.Status = http.StatusText(code)
+					default:
+						if isClient {
+							st.req.Header.Add(hdr.Name, hdr.Value)
+						} else {
+							st.resp.Header.Add(hdr.Name, hdr.Value)
+						}
+					}
+				}
+
+				if fr.HeadersEnded() {
+					if isClient {
+						st.parser.UseRequest(st.req.Request)
+						go func() {
+							defer st.req.Request.Body.Close()
+							io.Copy(io.Discard, st.req.Request.Body)
+						}()
+					} else {
+						st.parser.UseResponse(st.resp.Response)
+						go func() {
+							defer st.resp.Response.Body.Close()
+							io.Copy(io.Discard, st.resp.Response.Body)
+						}()
+					}
+				}
+
+				if fr.StreamEnded() {
+					if isClient {
+						st.req.buf.Close()
+					} else {
+						st.resp.buf.Close()
+					}
+					st.active.Done()
+				}
+
+				p := http2.HeadersFrameParam{
+					StreamID:      fr.StreamID,
+					BlockFragment: fr.HeaderBlockFragment(),
+					EndStream:     fr.StreamEnded(),
+					EndHeaders:    fr.HeadersEnded(),
+					Priority:      fr.Priority,
+				}
+				if err := dst.WriteHeaders(p); err != nil {
+					return fmt.Errorf("%T: write headers: %w", err)
+				}
+
+			case *http2.DataFrame:
+				st := getStream(fr.StreamID)
+				if err := dst.WriteData(fr.StreamID, fr.StreamEnded(), fr.Data()); err != nil {
+					return fmt.Errorf("%T: write data: %w", fr, err)
+				}
+				if isClient {
+					if _, err := st.req.buf.Write(fr.Data()); err != nil {
+						return fmt.Errorf("%T: write pipe: %w", fr, err)
+					}
+					if fr.StreamEnded() {
+						st.req.buf.Close()
+						st.active.Done()
+					}
+				} else {
+					if _, err := st.resp.buf.Write(fr.Data()); err != nil {
+						return fmt.Errorf("%T: write pipe: %w", fr, err)
+					}
+					if fr.StreamEnded() {
+						st.resp.buf.Close()
+						st.active.Done()
+					}
+				}
+
+			case *http2.SettingsFrame:
+				if fr.IsAck() {
+					if err := dst.WriteSettingsAck(); err != nil {
+						return fmt.Errorf("%T: write settings ack: %w", fr, err)
+					}
+				} else {
+					var arr []http2.Setting
+					for i := 0; i < fr.NumSettings(); i++ {
+						arr = append(arr, fr.Setting(i))
+					}
+					if err := dst.WriteSettings(arr...); err != nil {
+						return fmt.Errorf("%T: forward: %w", fr, err)
+					}
+				}
+
+			case *http2.PingFrame:
+				if err := dst.WritePing(fr.Flags.Has(http2.FlagPingAck), fr.Data); err != nil {
+					return fmt.Errorf("%T: forward: %w", fr, err)
+				}
+
+			case *http2.WindowUpdateFrame:
+				if err := dst.WriteWindowUpdate(fr.StreamID, fr.Increment); err != nil {
+					return fmt.Errorf("%T: forward: %w", fr, err)
+				}
+
+			case *http2.RSTStreamFrame:
+				if err := dst.WriteRSTStream(fr.StreamID, fr.ErrCode); err != nil {
+					return fmt.Errorf("%T: forward: %w", fr, err)
+				}
+
+			case *http2.GoAwayFrame:
+				if err := dst.WriteGoAway(fr.LastStreamID, fr.ErrCode, fr.DebugData()); err != nil {
+					return fmt.Errorf("%T: forward: %w", fr, err)
+				}
+
+			case *http2.PriorityFrame:
+				if err := dst.WritePriority(fr.StreamID, fr.PriorityParam); err != nil {
+					return fmt.Errorf("%T: forward: %w", fr, err)
+				}
+
+			case *http2.PushPromiseFrame:
+				param := http2.PushPromiseParam{
+					StreamID:      fr.StreamID,
+					PromiseID:     fr.PromiseID,
+					BlockFragment: fr.HeaderBlockFragment(),
+					EndHeaders:    fr.HeadersEnded(),
+				}
+				if err := dst.WritePushPromise(param); err != nil {
+					return fmt.Errorf("%T: forward: %w", fr, err)
+				}
+
+			default:
+			}
+		}
+	}
+
+	errs := make(chan error, 2)
+	go func() {
+		if err := copySingle(csr, csw, true); err != nil {
+			errs <- fmt.Errorf("client->server: %w", err)
+			return
+		}
+		errs <- nil
+	}()
+	go func() {
+		if err := copySingle(scr, scw, false); err != nil {
+			errs <- fmt.Errorf("server->client: %w", err)
+			return
+		}
+		errs <- nil
+	}()
+	return errors.Join(<-errs, <-errs)
 }
 
 func (p *proxy) proxyFallback(cli, srv *bufConn) error {
