@@ -504,15 +504,16 @@ func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
 		dec := hpack.NewDecoder(4096, nil)
 		for {
 			fr, err := src.ReadFrame()
-			if err != nil {
-				switch {
-				case errors.Is(err, io.EOF):
-					return nil
-				case errors.Is(err, net.ErrClosed):
-					return nil
-				default:
-					return fmt.Errorf("read frame: %w", err)
-				}
+			switch {
+			case err == nil:
+			case errors.Is(err, io.EOF):
+				return nil
+			case errors.Is(err, net.ErrClosed):
+				return nil
+			case strings.Contains(err.Error(), "connection reset by peer"):
+				return nil
+			default:
+				return fmt.Errorf("read frame: %w", err)
 			}
 
 			switch fr := fr.(type) {
