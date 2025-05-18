@@ -269,6 +269,7 @@ func (p *proxy) proxyHTTP(cli, srv *bufConn) error {
 	switch protocol {
 	case "http/1":
 		return p.proxyHTTP1(cli, srv)
+
 	case "http/2":
 		switch strings.ToLower(os.Getenv("SUBTRACE_HTTP2")) {
 		case "1", "y", "yes", "t", "true":
@@ -276,6 +277,7 @@ func (p *proxy) proxyHTTP(cli, srv *bufConn) error {
 		default:
 			return p.proxyFallback(cli, srv)
 		}
+
 	default:
 		return p.proxyFallback(cli, srv)
 	}
@@ -440,24 +442,20 @@ func (p *proxy) newHTTP2Stream(streamID uint32) *http2Stream {
 
 	st.active.Add(2)
 
-	r1, w1 := io.Pipe()
 	st.req.Request = new(http.Request)
 	st.req.Request.Proto = "HTTP/2"
 	st.req.Request.ProtoMajor = 2
 	st.req.Request.ProtoMinor = 0
 	st.req.Request.URL = new(url.URL)
 	st.req.Request.Header = make(http.Header)
-	st.req.Request.Body = r1
-	st.req.buf = w1
+	st.req.Request.Body, st.req.buf = io.Pipe()
 
-	r2, w2 := io.Pipe()
 	st.resp.Response = new(http.Response)
 	st.resp.Response.Proto = "HTTP/2"
 	st.resp.Response.ProtoMajor = 2
 	st.resp.Response.ProtoMinor = 0
 	st.resp.Header = make(http.Header)
-	st.resp.Body = r2
-	st.resp.buf = w2
+	st.resp.Body, st.resp.buf = io.Pipe()
 
 	go func() {
 		st.active.Wait()
@@ -481,11 +479,6 @@ func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
 		return fmt.Errorf("write preface: %w", err)
 	}
 
-	csr := http2.NewFramer(nil, cli)
-	scr := http2.NewFramer(nil, srv)
-	csw := http2.NewFramer(srv, nil)
-	scw := http2.NewFramer(cli, nil)
-
 	var mu sync.Mutex
 	state := make(map[uint32]*http2Stream)
 
@@ -507,12 +500,19 @@ func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
 		return st
 	}
 
-	copySingle := func(src *http2.Framer, dst *http2.Framer, isClient bool) error {
+	copySingle := func(dst *http2.Framer, src *http2.Framer, isClient bool) error {
 		dec := hpack.NewDecoder(4096, nil)
 		for {
 			fr, err := src.ReadFrame()
 			if err != nil {
-				return fmt.Errorf("read frame: %w", err)
+				switch {
+				case errors.Is(err, io.EOF):
+					return nil
+				case errors.Is(err, net.ErrClosed):
+					return nil
+				default:
+					return fmt.Errorf("read frame: %w", err)
+				}
 			}
 
 			switch fr := fr.(type) {
@@ -669,21 +669,31 @@ func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
 	}
 
 	errs := make(chan error, 2)
+
 	go func() {
-		if err := copySingle(csr, csw, true); err != nil {
+		defer srv.CloseWrite()
+		defer cli.CloseRead()
+		if err := copySingle(http2.NewFramer(srv, nil), http2.NewFramer(nil, cli), true); err != nil {
 			errs <- fmt.Errorf("client->server: %w", err)
 			return
 		}
 		errs <- nil
 	}()
+
 	go func() {
-		if err := copySingle(scr, scw, false); err != nil {
+		defer srv.CloseWrite()
+		defer cli.CloseRead()
+		if err := copySingle(http2.NewFramer(cli, nil), http2.NewFramer(nil, srv), false); err != nil {
 			errs <- fmt.Errorf("server->client: %w", err)
 			return
 		}
 		errs <- nil
 	}()
-	return errors.Join(<-errs, <-errs)
+
+	if err := errors.Join(<-errs, <-errs); err != nil {
+		return fmt.Errorf("http/2 proxy: %w", err)
+	}
+	return nil
 }
 
 func (p *proxy) proxyFallback(cli, srv *bufConn) error {
