@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -151,6 +152,16 @@ func (p *proxy) start() {
 	}
 }
 
+var isHTTP2Enabled = false
+
+func init() {
+	switch strings.ToLower(os.Getenv("SUBTRACE_HTTP2")) {
+	case "1", "y", "yes", "t", "true":
+		isHTTP2Enabled = true
+	default:
+	}
+}
+
 // proxyOptimistic peeks at buffered bytes available on the client side to
 // guess the protocol. If a known protocol is found, it passes control to that
 // protocol's handler. Otherwise, it falls back to the raw handler.
@@ -174,6 +185,40 @@ func (p *proxy) proxyOptimistic(cli, srv *bufConn) error {
 			}
 			return
 		}
+
+		if isHTTP2Enabled {
+			// Give the client up to few hundred milliseconds to catch up so it has a
+			// better chance of winning the race in situations where the first server
+			// bytes arrive fractions of a millisecond before the first client bytes
+			// (e.g. when a HTTP/2 server pushes a SETTINGS frame before the client
+			// sends its first frame). Doing this greatly increases wire protocol
+			// guess accuracy. While this admittedly adds upto 1ms latency in obscure
+			// protocols where the server is required to talk first, the trade-off is
+			// well worth it because Subtrace is not designed for those protocols.
+			start := time.Now()
+			for i := 0; ; i++ {
+				if race.Load() {
+					break
+				}
+				if i&15 == 15 {
+					time.Sleep(20 * time.Microsecond)
+				}
+				if race.Load() {
+					break
+				}
+				if time.Since(start) >= 1000*time.Microsecond {
+					break
+				}
+				if race.Load() {
+					break
+				}
+				runtime.Gosched()
+				if race.Load() {
+					break
+				}
+			}
+		}
+
 		if winner := race.CompareAndSwap(false, true); !winner {
 			errs <- nil
 			return
@@ -197,6 +242,7 @@ func (p *proxy) proxyOptimistic(cli, srv *bufConn) error {
 			}
 			return
 		}
+
 		if winner := race.CompareAndSwap(false, true); !winner {
 			// Peeking the server's bytes finished before we could peek the client's
 			// bytes. This is neither HTTP nor TLS. Since we lost the race, the other
@@ -205,7 +251,9 @@ func (p *proxy) proxyOptimistic(cli, srv *bufConn) error {
 			errs <- nil
 			return
 		}
-		switch proto := guessProtocol(sample); proto {
+
+		protocol := guessProtocol(sample)
+		switch protocol {
 		case "tls":
 			if tls.Enabled {
 				errs <- p.proxyTLS(cli, srv)
@@ -271,10 +319,9 @@ func (p *proxy) proxyHTTP(cli, srv *bufConn) error {
 		return p.proxyHTTP1(cli, srv)
 
 	case "http/2":
-		switch strings.ToLower(os.Getenv("SUBTRACE_HTTP2")) {
-		case "1", "y", "yes", "t", "true":
+		if isHTTP2Enabled {
 			return p.proxyHTTP2(cli, srv)
-		default:
+		} else {
 			return p.proxyFallback(cli, srv)
 		}
 
