@@ -467,13 +467,17 @@ type http2Stream struct {
 	active sync.WaitGroup
 
 	req struct {
-		*http.Request
-		buf *io.PipeWriter
+		Request      *http.Request
+		buf          *io.PipeWriter
+		headersEnded bool
+		parserUsed   bool
 	}
 
 	resp struct {
-		*http.Response
-		buf *io.PipeWriter
+		Response     *http.Response
+		buf          *io.PipeWriter
+		headersEnded bool
+		parserUsed   bool
 	}
 }
 
@@ -495,14 +499,16 @@ func (p *proxy) newHTTP2Stream(streamID uint32) *http2Stream {
 	st.req.Request.ProtoMinor = 0
 	st.req.Request.URL = new(url.URL)
 	st.req.Request.Header = make(http.Header)
+	st.req.Request.Trailer = make(http.Header)
 	st.req.Request.Body, st.req.buf = io.Pipe()
 
 	st.resp.Response = new(http.Response)
 	st.resp.Response.Proto = "HTTP/2"
 	st.resp.Response.ProtoMajor = 2
 	st.resp.Response.ProtoMinor = 0
-	st.resp.Header = make(http.Header)
-	st.resp.Body, st.resp.buf = io.Pipe()
+	st.resp.Response.Header = make(http.Header)
+	st.resp.Response.Trailer = make(http.Header)
+	st.resp.Response.Body, st.resp.buf = io.Pipe()
 
 	go func() {
 		st.active.Wait()
@@ -572,13 +578,20 @@ func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
 					return fmt.Errorf("%T: decode fields: %w", fr, err)
 				}
 
+				var isTrailer bool
+				if isClient {
+					isTrailer = st.req.headersEnded
+				} else {
+					isTrailer = st.resp.headersEnded
+				}
+
 				for _, hdr := range headers {
 					switch hdr.Name {
 					case ":method":
-						st.req.Method = hdr.Value
+						st.req.Request.Method = hdr.Value
 					case ":path":
-						st.req.URL.RawPath = hdr.Value
-						st.req.URL.Path = hdr.Value
+						st.req.Request.URL.RawPath = hdr.Value
+						st.req.Request.URL.Path = hdr.Value
 					case ":scheme":
 					case ":authority":
 					case ":status":
@@ -590,30 +603,56 @@ func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
 							code *= 10
 							code += int(byte(hdr.Value[i])) - int(byte('0'))
 						}
-						st.resp.StatusCode = code
-						st.resp.Status = http.StatusText(code)
+						st.resp.Response.StatusCode = code
+						st.resp.Response.Status = http.StatusText(code)
 					default:
-						if isClient {
-							st.req.Header.Add(hdr.Name, hdr.Value)
+						if !isTrailer {
+							if isClient {
+								st.req.Request.Header.Add(hdr.Name, hdr.Value)
+							} else {
+								st.resp.Response.Header.Add(hdr.Name, hdr.Value)
+							}
 						} else {
-							st.resp.Header.Add(hdr.Name, hdr.Value)
+							if isClient {
+								st.req.Request.Trailer.Add(hdr.Name, hdr.Value)
+							} else {
+								st.resp.Response.Trailer.Add(hdr.Name, hdr.Value)
+							}
 						}
 					}
 				}
 
 				if fr.HeadersEnded() {
-					if isClient {
-						st.parser.UseRequest(st.req.Request)
-						go func() {
-							defer st.req.Request.Body.Close()
-							io.Copy(io.Discard, st.req.Request.Body)
-						}()
+					if !isTrailer {
+						if isClient {
+							st.req.headersEnded = true
+						} else {
+							st.resp.headersEnded = true
+						}
+					}
+				}
+
+				if fr.HeadersEnded() {
+					if !isTrailer {
+						if isClient {
+							st.parser.UseRequest(st.req.Request)
+							go func() {
+								defer st.req.Request.Body.Close()
+								io.Copy(io.Discard, st.req.Request.Body)
+							}()
+						} else {
+							st.parser.UseResponse(st.resp.Response)
+							go func() {
+								defer st.resp.Response.Body.Close()
+								io.Copy(io.Discard, st.resp.Response.Body)
+							}()
+						}
 					} else {
-						st.parser.UseResponse(st.resp.Response)
-						go func() {
-							defer st.resp.Response.Body.Close()
-							io.Copy(io.Discard, st.resp.Response.Body)
-						}()
+						if isClient {
+							st.parser.SetRequestTrailer(st.req.Request.Trailer)
+						} else {
+							st.parser.SetResponseTrailer(st.resp.Response.Trailer)
+						}
 					}
 				}
 
@@ -642,22 +681,24 @@ func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
 				if err := dst.WriteData(fr.StreamID, fr.StreamEnded(), fr.Data()); err != nil {
 					return fmt.Errorf("%T: write data: %w", fr, err)
 				}
+
 				if isClient {
 					if _, err := st.req.buf.Write(fr.Data()); err != nil {
 						return fmt.Errorf("%T: write pipe: %w", fr, err)
-					}
-					if fr.StreamEnded() {
-						st.req.buf.Close()
-						st.active.Done()
 					}
 				} else {
 					if _, err := st.resp.buf.Write(fr.Data()); err != nil {
 						return fmt.Errorf("%T: write pipe: %w", fr, err)
 					}
-					if fr.StreamEnded() {
+				}
+
+				if fr.StreamEnded() {
+					if isClient {
+						st.req.buf.Close()
+					} else {
 						st.resp.buf.Close()
-						st.active.Done()
 					}
+					st.active.Done()
 				}
 
 			case *http2.SettingsFrame:

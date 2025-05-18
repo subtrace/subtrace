@@ -42,6 +42,9 @@ type Parser struct {
 	request  *har.Request
 	response *har.Response
 
+	requestTrailer  http.Header
+	responseTrailer http.Header
+
 	journalIdx uint64
 }
 
@@ -191,6 +194,14 @@ func (p *Parser) UseResponse(resp *http.Response) {
 	}()
 }
 
+func (p *Parser) SetRequestTrailer(tr http.Header) {
+	p.requestTrailer = tr
+}
+
+func (p *Parser) SetResponseTrailer(tr http.Header) {
+	p.responseTrailer = tr
+}
+
 func (p *Parser) include(tags map[string]string, entry *har.Entry) bool {
 	begin := time.Now()
 	defer func() {
@@ -249,6 +260,15 @@ func (p *Parser) Finish() error {
 
 	if !p.include(tags, entry) {
 		return nil
+	}
+
+	// HAR v1.2 doesn't support trailers so for now we just set the counts as a
+	// way to indicate to the user that there were trailers.
+	if p.requestTrailer != nil {
+		tags["request_trailer_count"] = fmt.Sprintf("%d", len(p.requestTrailer))
+	}
+	if p.responseTrailer != nil {
+		tags["response_trailer_count"] = fmt.Sprintf("%d", len(p.responseTrailer))
 	}
 
 	json, err := json.Marshal(entry)
