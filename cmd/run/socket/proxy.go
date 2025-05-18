@@ -470,14 +470,12 @@ type http2Stream struct {
 		Request      *http.Request
 		buf          *io.PipeWriter
 		headersEnded bool
-		parserUsed   bool
 	}
 
 	resp struct {
 		Response     *http.Response
 		buf          *io.PipeWriter
 		headersEnded bool
-		parserUsed   bool
 	}
 }
 
