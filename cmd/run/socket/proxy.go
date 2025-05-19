@@ -155,10 +155,11 @@ func (p *proxy) start() {
 var isHTTP2Enabled = false
 
 func init() {
-	switch strings.ToLower(os.Getenv("SUBTRACE_HTTP2")) {
-	case "1", "y", "yes", "t", "true":
-		isHTTP2Enabled = true
-	default:
+	for _, name := range []string{"SUBTRACE_HTTP2", "SUBTRACE_GRPC"} {
+		switch strings.ToLower(os.Getenv(name)) {
+		case "1", "y", "yes", "t", "true":
+			isHTTP2Enabled = true
+		}
 	}
 }
 
