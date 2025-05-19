@@ -17,9 +17,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/andybalholm/brotli"
 	"github.com/google/martian/v3/har"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"subtrace.dev/cmd/run/journal"
 	"subtrace.dev/event"
@@ -63,6 +65,52 @@ func NewParser(global *global.Global, event *event.Event) *Parser {
 
 		journalIdx: journalIdx,
 	}
+}
+
+func decodeGRPC(enc map[protowire.Number]any, buf []byte) error {
+	for len(buf) > 0 {
+		num, typ, tlen := protowire.ConsumeTag(buf)
+		if tlen > len(buf) {
+			return fmt.Errorf("consume num=%v, typ=%v: short buffer: %d < %d", num, typ, tlen, len(buf))
+		}
+		buf = buf[tlen:]
+		var vlen int
+		switch typ {
+		case protowire.VarintType:
+			enc[num], vlen = protowire.ConsumeVarint(buf)
+		case protowire.Fixed32Type:
+			enc[num], vlen = protowire.ConsumeFixed32(buf)
+		case protowire.Fixed64Type:
+			enc[num], vlen = protowire.ConsumeFixed64(buf)
+		case protowire.BytesType:
+			var tmp []byte
+			tmp, vlen = protowire.ConsumeBytes(buf)
+			if vlen >= 0 {
+				if _, _, size := protowire.ConsumeTag(tmp); size >= 0 {
+					m := make(map[protowire.Number]any)
+					if err := decodeGRPC(m, tmp); err == nil {
+						enc[num] = m
+						break
+					}
+				}
+				if utf8.Valid(tmp) {
+					enc[num] = string(tmp)
+				} else {
+					enc[num] = base64.RawStdEncoding.EncodeToString(tmp)
+				}
+			}
+		case protowire.StartGroupType:
+			enc[num], vlen = protowire.ConsumeGroup(num, buf)
+		case protowire.EndGroupType:
+		default:
+			return fmt.Errorf("consume num=%v, typ=%v: unknown type", num, typ)
+		}
+		if vlen < 0 {
+			return fmt.Errorf("consume num=%v, typ=%v: parse error: %w", num, typ, protowire.ParseError(vlen))
+		}
+		buf = buf[vlen:]
+	}
+	return nil
 }
 
 func (p *Parser) UseRequest(req *http.Request) {
@@ -116,8 +164,36 @@ func (p *Parser) UseRequest(req *http.Request) {
 			}
 		}
 
+		mimeType := req.Header.Get("content-type")
+
+		switch strings.ToLower(os.Getenv("SUBTRACE_GRPC")) {
+		case "1", "y", "yes", "t", "true":
+			for i := range h.Headers {
+				if strings.ToLower(h.Headers[i].Name) != "content-type" {
+					continue
+				}
+				if h.Headers[i].Value != "application/grpc" {
+					break
+				}
+				if len(text) < 5 {
+					break
+				}
+				m := make(map[protowire.Number]any)
+				if err := decodeGRPC(m, text[5:]); err != nil {
+					break
+				}
+				b, err := json.Marshal(m)
+				if err != nil {
+					break
+				}
+				mimeType = "application/json"
+				text = b
+				break
+			}
+		}
+
 		h.PostData = &har.PostData{
-			MimeType: req.Header.Get("content-type"),
+			MimeType: mimeType,
 			Text:     string(text),
 		}
 
@@ -182,9 +258,37 @@ func (p *Parser) UseResponse(resp *http.Response) {
 			}
 		}
 
+		mimeType := resp.Header.Get("content-type")
+
+		switch strings.ToLower(os.Getenv("SUBTRACE_GRPC")) {
+		case "1", "y", "yes", "t", "true":
+			for i := range h.Headers {
+				if strings.ToLower(h.Headers[i].Name) != "content-type" {
+					continue
+				}
+				if h.Headers[i].Value != "application/grpc" {
+					break
+				}
+				if len(text) < 5 {
+					break
+				}
+				m := make(map[protowire.Number]any)
+				if err := decodeGRPC(m, text[5:]); err != nil {
+					break
+				}
+				b, err := json.Marshal(m)
+				if err != nil {
+					break
+				}
+				mimeType = "application/json"
+				text = b
+				break
+			}
+		}
+
 		h.Content = &har.Content{
 			Size:     sampler.used,
-			MimeType: resp.Header.Get("content-type"),
+			MimeType: mimeType,
 			Text:     text,
 			Encoding: "base64",
 		}
