@@ -68,7 +68,7 @@ func NewParser(global *global.Global, event *event.Event) *Parser {
 	}
 }
 
-func decodeRawProto(depth int, enc map[protowire.Number]any, buf []byte) error {
+func decodeRawProto(depth int, enc map[string]any, buf []byte) error {
 	if depth > 100 {
 		return fmt.Errorf("recursion depth limit exceeded")
 	}
@@ -81,33 +81,35 @@ func decodeRawProto(depth int, enc map[protowire.Number]any, buf []byte) error {
 			return fmt.Errorf("consume num=%v, typ=%v: short buffer: %d < %d", num, typ, tlen, len(buf))
 		}
 		buf = buf[tlen:]
+
+		key := fmt.Sprintf("%d", num)
 		var vlen int
 		switch typ {
 		case protowire.VarintType:
-			enc[num], vlen = protowire.ConsumeVarint(buf)
+			enc[key], vlen = protowire.ConsumeVarint(buf)
 		case protowire.Fixed32Type:
-			enc[num], vlen = protowire.ConsumeFixed32(buf)
+			enc[key], vlen = protowire.ConsumeFixed32(buf)
 		case protowire.Fixed64Type:
-			enc[num], vlen = protowire.ConsumeFixed64(buf)
+			enc[key], vlen = protowire.ConsumeFixed64(buf)
 		case protowire.BytesType:
 			var tmp []byte
 			tmp, vlen = protowire.ConsumeBytes(buf)
 			if vlen >= 0 {
 				if _, _, size := protowire.ConsumeTag(tmp); size >= 0 {
-					m := make(map[protowire.Number]any)
+					m := make(map[string]any)
 					if err := decodeRawProto(depth+1, m, tmp); err == nil {
-						enc[num] = m
+						enc[key] = m
 						break
 					}
 				}
 				if utf8.Valid(tmp) {
-					enc[num] = string(tmp)
+					enc[key] = string(tmp)
 				} else {
-					enc[num] = base64.RawStdEncoding.EncodeToString(tmp)
+					enc[key] = base64.RawStdEncoding.EncodeToString(tmp)
 				}
 			}
 		case protowire.StartGroupType:
-			enc[num], vlen = protowire.ConsumeGroup(num, buf)
+			enc[key], vlen = protowire.ConsumeGroup(num, buf)
 		case protowire.EndGroupType:
 		default:
 			return fmt.Errorf("consume num=%v, typ=%v: unknown type", num, typ)
@@ -125,24 +127,34 @@ func jsonify(mime string, buf []byte) ([]byte, bool) {
 	case "application/grpc":
 		switch strings.ToLower(os.Getenv("SUBTRACE_GRPC")) {
 		case "1", "y", "yes", "t", "true":
-			var arr []map[protowire.Number]any
+			var arr []map[string]any
 			for len(buf) > 0 {
 				if len(buf) < 5 {
 					return nil, false
 				}
 
+				comp := buf[0]
 				size := binary.BigEndian.Uint32(buf[1:5])
 				if len(buf) < int(size) {
 					return nil, false
 				}
-
 				buf = buf[5:]
-				enc := make(map[protowire.Number]any)
-				if err := decodeRawProto(1, enc, buf[:size]); err != nil {
+
+				if int(size) > len(buf) {
 					return nil, false
 				}
-
+				slice := buf[:size]
 				buf = buf[size:]
+
+				if comp != 0 {
+					arr = append(arr, map[string]any{"_comp": base64.RawStdEncoding.EncodeToString(slice)})
+					continue
+				}
+
+				enc := make(map[string]any)
+				if err := decodeRawProto(1, enc, slice); err != nil {
+					return nil, false
+				}
 				arr = append(arr, enc)
 			}
 			b, err := json.Marshal(arr)
