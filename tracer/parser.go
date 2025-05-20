@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,7 +68,7 @@ func NewParser(global *global.Global, event *event.Event) *Parser {
 	}
 }
 
-func decodeGRPC(depth int, enc map[protowire.Number]any, buf []byte) error {
+func decodeRawProto(depth int, enc map[protowire.Number]any, buf []byte) error {
 	if depth > 100 {
 		return fmt.Errorf("recursion depth limit exceeded")
 	}
@@ -94,7 +95,7 @@ func decodeGRPC(depth int, enc map[protowire.Number]any, buf []byte) error {
 			if vlen >= 0 {
 				if _, _, size := protowire.ConsumeTag(tmp); size >= 0 {
 					m := make(map[protowire.Number]any)
-					if err := decodeGRPC(depth+1, m, tmp); err == nil {
+					if err := decodeRawProto(depth+1, m, tmp); err == nil {
 						enc[num] = m
 						break
 					}
@@ -119,19 +120,32 @@ func decodeGRPC(depth int, enc map[protowire.Number]any, buf []byte) error {
 	return nil
 }
 
-func jsonify(mime string, data []byte) ([]byte, bool) {
+func jsonify(mime string, buf []byte) ([]byte, bool) {
 	switch mime {
 	case "application/grpc":
 		switch strings.ToLower(os.Getenv("SUBTRACE_GRPC")) {
 		case "1", "y", "yes", "t", "true":
-			if len(data) < 5 {
-				return nil, false
+			var arr []map[protowire.Number]any
+			for len(buf) > 0 {
+				if len(buf) < 5 {
+					return nil, false
+				}
+
+				size := binary.BigEndian.Uint32(buf[1:5])
+				if len(buf) < int(size) {
+					return nil, false
+				}
+
+				buf = buf[5:]
+				enc := make(map[protowire.Number]any)
+				if err := decodeRawProto(1, enc, buf[:size]); err != nil {
+					return nil, false
+				}
+
+				buf = buf[size:]
+				arr = append(arr, enc)
 			}
-			m := make(map[protowire.Number]any)
-			if err := decodeGRPC(1, m, data[5:]); err != nil {
-				return nil, false
-			}
-			b, err := json.Marshal(m)
+			b, err := json.Marshal(arr)
 			if err != nil {
 				return nil, false
 			}
@@ -192,20 +206,20 @@ func (p *Parser) UseRequest(req *http.Request) {
 			}
 		}
 
-		var mime string
+		h.PostData = &har.PostData{
+			MimeType: req.Header.Get("content-type"),
+			Text:     string(text),
+		}
+
 		for _, hdr := range h.Headers {
 			switch strings.ToLower(hdr.Name) {
 			case "content-type":
-				mime = hdr.Value
-				json, ok := jsonify(mime, text)
+				json, ok := jsonify(hdr.Value, text)
 				if ok {
-					mime, text = "application/json", json
+					h.PostData.MimeType = "application/json"
+					h.PostData.Text = string(json)
 				}
 			}
-		}
-		h.PostData = &har.PostData{
-			MimeType: mime,
-			Text:     string(text),
 		}
 
 		p.request = h
@@ -269,22 +283,22 @@ func (p *Parser) UseResponse(resp *http.Response) {
 			}
 		}
 
-		var mime string
+		h.Content = &har.Content{
+			Size:     sampler.used,
+			MimeType: resp.Header.Get("content-type"),
+			Text:     text,
+			Encoding: "base64",
+		}
+
 		for _, hdr := range h.Headers {
 			switch strings.ToLower(hdr.Name) {
 			case "content-type":
-				mime = hdr.Value
-				json, ok := jsonify(mime, text)
+				json, ok := jsonify(hdr.Value, text)
 				if ok {
-					mime, text = "application/json", json
+					h.Content.MimeType = "application/json"
+					h.Content.Text = json
 				}
 			}
-		}
-		h.Content = &har.Content{
-			Size:     sampler.used,
-			MimeType: mime,
-			Text:     text,
-			Encoding: "base64",
 		}
 
 		p.response = h
