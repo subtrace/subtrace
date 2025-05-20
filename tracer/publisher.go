@@ -59,7 +59,9 @@ func (p *publisher) dialSingle(ctx context.Context) (*websocket.Conn, string, er
 		HTTPHeader: rpc.GetHeader(),
 	})
 	if err != nil {
-		defer resp.Body.Close()
+		if resp != nil && resp.Body != nil {
+			defer resp.Body.Close()
+		}
 		return nil, "", fmt.Errorf("dial: %w", err)
 	}
 
