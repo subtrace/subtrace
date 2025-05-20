@@ -113,6 +113,28 @@ func decodeGRPC(enc map[protowire.Number]any, buf []byte) error {
 	return nil
 }
 
+func jsonify(mime string, data []byte) ([]byte, bool) {
+	switch mime {
+	case "application/grpc":
+		switch strings.ToLower(os.Getenv("SUBTRACE_GRPC")) {
+		case "1", "y", "yes", "t", "true":
+			if len(data) < 5 {
+				return nil, false
+			}
+			m := make(map[protowire.Number]any)
+			if err := decodeGRPC(m, data[5:]); err != nil {
+				return nil, false
+			}
+			b, err := json.Marshal(m)
+			if err != nil {
+				return nil, false
+			}
+			return b, true
+		}
+	}
+	return nil, false
+}
+
 func (p *Parser) UseRequest(req *http.Request) {
 	sampler := newSampler(req.Body)
 	req.Body = sampler
@@ -164,36 +186,19 @@ func (p *Parser) UseRequest(req *http.Request) {
 			}
 		}
 
-		mimeType := req.Header.Get("content-type")
-
-		switch strings.ToLower(os.Getenv("SUBTRACE_GRPC")) {
-		case "1", "y", "yes", "t", "true":
-			for i := range h.Headers {
-				if strings.ToLower(h.Headers[i].Name) != "content-type" {
-					continue
+		var mime string
+		for _, hdr := range h.Headers {
+			switch strings.ToLower(hdr.Name) {
+			case "content-type":
+				mime = hdr.Value
+				json, ok := jsonify(mime, text)
+				if ok {
+					mime, text = "application/json", json
 				}
-				if h.Headers[i].Value != "application/grpc" {
-					break
-				}
-				if len(text) < 5 {
-					break
-				}
-				m := make(map[protowire.Number]any)
-				if err := decodeGRPC(m, text[5:]); err != nil {
-					break
-				}
-				b, err := json.Marshal(m)
-				if err != nil {
-					break
-				}
-				mimeType = "application/json"
-				text = b
-				break
 			}
 		}
-
 		h.PostData = &har.PostData{
-			MimeType: mimeType,
+			MimeType: mime,
 			Text:     string(text),
 		}
 
@@ -258,37 +263,20 @@ func (p *Parser) UseResponse(resp *http.Response) {
 			}
 		}
 
-		mimeType := resp.Header.Get("content-type")
-
-		switch strings.ToLower(os.Getenv("SUBTRACE_GRPC")) {
-		case "1", "y", "yes", "t", "true":
-			for i := range h.Headers {
-				if strings.ToLower(h.Headers[i].Name) != "content-type" {
-					continue
+		var mime string
+		for _, hdr := range h.Headers {
+			switch strings.ToLower(hdr.Name) {
+			case "content-type":
+				mime = hdr.Value
+				json, ok := jsonify(mime, text)
+				if ok {
+					mime, text = "application/json", json
 				}
-				if h.Headers[i].Value != "application/grpc" {
-					break
-				}
-				if len(text) < 5 {
-					break
-				}
-				m := make(map[protowire.Number]any)
-				if err := decodeGRPC(m, text[5:]); err != nil {
-					break
-				}
-				b, err := json.Marshal(m)
-				if err != nil {
-					break
-				}
-				mimeType = "application/json"
-				text = b
-				break
 			}
 		}
-
 		h.Content = &har.Content{
 			Size:     sampler.used,
-			MimeType: mimeType,
+			MimeType: mime,
 			Text:     text,
 			Encoding: "base64",
 		}
