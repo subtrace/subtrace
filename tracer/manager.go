@@ -54,8 +54,7 @@ func (b *block) insert(event string) bool {
 }
 
 func initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string) (_ *websocket.Conn, finalErr error) {
-	slog.Debug("initializing tunnel session", "tunnelID", tunnelID, "role", tunnel.Role_INSERT)
-
+	slog.Debug("dialing tunnel websocket", "tunnelID", tunnelID, "role", tunnel.Role_INSERT)
 	conn, resp, err := websocket.Dial(ctx, endpoint, &websocket.DialOptions{
 		HTTPHeader: rpc.GetHeader(
 			rpc.WithoutToken(),
@@ -64,19 +63,13 @@ func initTunnel(ctx context.Context, tunnelID uuid.UUID, endpoint string) (_ *we
 		),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("dial: %w", err)
-	}
-	if resp.Body != nil {
-		defer resp.Body.Close()
-	}
-	if resp.StatusCode != http.StatusSwitchingProtocols {
-		if conn != nil {
-			conn.CloseNow()
-		}
-		err := fmt.Errorf("bad response status: got %d, want %d", resp.StatusCode, http.StatusSwitchingProtocols)
-		if resp.Body != nil {
-			if b, _ := io.ReadAll(resp.Body); len(b) > 0 {
-				err = fmt.Errorf("%w: %s", err, string(b))
+		err := fmt.Errorf("websocket dial: %w", err)
+		if resp != nil {
+			err = fmt.Errorf("%w: %s", err, http.StatusText(resp.StatusCode))
+			if resp.Body != nil {
+				if b, err2 := io.ReadAll(resp.Body); err2 != nil && len(b) > 0 {
+					err = fmt.Errorf("%w: %s", err, string(b))
+				}
 			}
 		}
 		return nil, err

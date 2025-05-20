@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -327,12 +328,13 @@ func (s *subscriber) Message(x *pubsub.Message) error {
 }
 
 func dialWebsocket(ctx context.Context) (*websocket.Conn, error) {
-	url, err := getWebsocketURL(ctx)
+	u, err := getWebsocketURL(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get websocket url: %w", err)
 	}
 
-	conn, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: rpc.GetHeader()})
+	slog.Debug("dialing publisher websocket", "namespaceID", u.Query().Get("namespaceID"), "expiry", u.Query().Get("expiry"))
+	conn, resp, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: rpc.GetHeader()})
 	if err != nil {
 		err := fmt.Errorf("websocket dial: %w", err)
 		if resp != nil {
@@ -346,24 +348,27 @@ func dialWebsocket(ctx context.Context) (*websocket.Conn, error) {
 		}
 		return nil, err
 	}
-
-	conn.SetReadLimit(1 << 24)
+	conn.SetReadLimit(16 << 20)
 
 	return conn, nil
 }
 
-func getWebsocketURL(ctx context.Context) (string, error) {
+func getWebsocketURL(ctx context.Context) (*url.URL, error) {
 	var resp pubsub.JoinSubscriber_Response
 	code, err := rpc.Call(ctx, &resp, "/api/JoinSubscriber", &pubsub.JoinSubscriber_Request{})
 	if err != nil {
-		return "", fmt.Errorf("call: %w", err)
+		return nil, fmt.Errorf("call: %w", err)
 	}
 	if code != http.StatusOK {
 		err := fmt.Errorf("%s", http.StatusText(code))
 		if resp.GetError() != "" {
 			err = fmt.Errorf("%w: %s", err, resp.GetError())
 		}
-		return "", err
+		return nil, err
 	}
-	return resp.WebsocketUrl, nil
+	u, err := url.Parse(resp.WebsocketUrl)
+	if err != nil {
+		return nil, fmt.Errorf("parse url: %w", err)
+	}
+	return u, nil
 }
