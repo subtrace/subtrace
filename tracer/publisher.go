@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -54,18 +55,24 @@ func (p *publisher) dialSingle(ctx context.Context) (*websocket.Conn, string, er
 		return nil, "", fmt.Errorf("parse url: %w", err)
 	}
 
-	conn, resp, err := websocket.Dial(ctx, pub.WebsocketUrl, &websocket.DialOptions{
+	slog.Debug("dialing publisher websocket", "namespaceID", u.Query().Get("namespaceID"), "expiry", u.Query().Get("expiry"))
+	conn, resp, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{
 		HTTPClient: http.DefaultClient,
 		HTTPHeader: rpc.GetHeader(),
 	})
 	if err != nil {
-		if resp != nil && resp.Body != nil {
-			defer resp.Body.Close()
+		err := fmt.Errorf("websocket dial: %w", err)
+		if resp != nil {
+			err = fmt.Errorf("%w: %s", err, http.StatusText(resp.StatusCode))
+			if resp.Body != nil {
+				if b, err2 := io.ReadAll(resp.Body); err2 != nil && len(b) > 0 {
+					err = fmt.Errorf("%w: %s", err, string(b))
+				}
+			}
 		}
-		return nil, "", fmt.Errorf("dial: %w", err)
+		return nil, "", err
 	}
-
-	conn.SetReadLimit(1 << 24)
+	conn.SetReadLimit(16 << 20)
 
 	go func() {
 		for {

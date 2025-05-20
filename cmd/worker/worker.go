@@ -264,8 +264,8 @@ func (c *Command) newTunnelConn(ctx context.Context, tunnelID uuid.UUID, endpoin
 		slog.Debug("applied new postgres migrations", "tunnelID", tunnelID, "applied", applied)
 	}
 
-	slog.Debug("connecting to tunnel websocket", "tunnelID", tunnelID, "role", "worker")
-	ws, resp, err := websocket.Dial(ctx, endpoint, &websocket.DialOptions{
+	slog.Debug("dialing tunnel websocket", "tunnelID", tunnelID, "role", "worker")
+	conn, resp, err := websocket.Dial(ctx, endpoint, &websocket.DialOptions{
 		HTTPHeader: rpc.GetHeader(
 			rpc.WithoutToken(),
 			rpc.WithTag("subtrace_tunnel_id", tunnelID.String()),
@@ -273,27 +273,21 @@ func (c *Command) newTunnelConn(ctx context.Context, tunnelID uuid.UUID, endpoin
 		),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("dial: %w", err)
-	}
-	if resp.Body != nil {
-		defer resp.Body.Close()
-	}
-	if resp.StatusCode != http.StatusSwitchingProtocols {
-		if ws != nil {
-			ws.CloseNow()
-		}
-		err := fmt.Errorf("bad response status: got %d, want %d", resp.StatusCode, http.StatusSwitchingProtocols)
-		if resp.Body != nil {
-			if b, _ := io.ReadAll(resp.Body); len(b) > 0 {
-				err = fmt.Errorf("%w: %s", err, string(b))
+		err := fmt.Errorf("websocket dial: %w", err)
+		if resp != nil {
+			err = fmt.Errorf("%w: %s", err, http.StatusText(resp.StatusCode))
+			if resp.Body != nil {
+				if b, err2 := io.ReadAll(resp.Body); err2 != nil && len(b) > 0 {
+					err = fmt.Errorf("%w: %s", err, string(b))
+				}
 			}
 		}
 		return nil, err
 	}
 
-	tc.websocket = ws
-	tc.websocket.SetReadLimit(64 << 20)
+	conn.SetReadLimit(64 << 20)
 
+	tc.websocket = conn
 	return tc, nil
 }
 
