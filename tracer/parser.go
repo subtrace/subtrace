@@ -67,7 +67,10 @@ func NewParser(global *global.Global, event *event.Event) *Parser {
 	}
 }
 
-func decodeGRPC(enc map[protowire.Number]any, buf []byte) error {
+func decodeGRPC(depth int, enc map[protowire.Number]any, buf []byte) error {
+	if depth > 100 {
+		return fmt.Errorf("recursion depth limit exceeded")
+	}
 	for len(buf) > 0 {
 		num, typ, tlen := protowire.ConsumeTag(buf)
 		if tlen > len(buf) {
@@ -88,7 +91,7 @@ func decodeGRPC(enc map[protowire.Number]any, buf []byte) error {
 			if vlen >= 0 {
 				if _, _, size := protowire.ConsumeTag(tmp); size >= 0 {
 					m := make(map[protowire.Number]any)
-					if err := decodeGRPC(m, tmp); err == nil {
+					if err := decodeGRPC(depth+1, m, tmp); err == nil {
 						enc[num] = m
 						break
 					}
@@ -122,7 +125,7 @@ func jsonify(mime string, data []byte) ([]byte, bool) {
 				return nil, false
 			}
 			m := make(map[protowire.Number]any)
-			if err := decodeGRPC(m, data[5:]); err != nil {
+			if err := decodeGRPC(1, m, data[5:]); err != nil {
 				return nil, false
 			}
 			b, err := json.Marshal(m)
