@@ -73,6 +73,9 @@ func decodeGRPC(depth int, enc map[protowire.Number]any, buf []byte) error {
 	}
 	for len(buf) > 0 {
 		num, typ, tlen := protowire.ConsumeTag(buf)
+		if tlen < 0 {
+			return fmt.Errorf("consume tag: %v", protowire.ParseError(tlen))
+		}
 		if tlen > len(buf) {
 			return fmt.Errorf("consume num=%v, typ=%v: short buffer: %d < %d", num, typ, tlen, len(buf))
 		}
