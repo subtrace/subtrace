@@ -86,7 +86,18 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 	case StateConnected:
 		return unix.EISCONN, nil
 	case StateConnecting:
-		return unix.EALREADY, nil // TODO: only if the socket is non-blocking
+		flags, err := unix.FcntlInt(uintptr(s.FD.FD()), unix.F_GETFL, 0)
+		if err != nil {
+			return 0, fmt.Errorf("fcntl: %w", err)
+		}
+		if isBlocking := flags&unix.O_NONBLOCK == 0; isBlocking {
+			// TODO: can this even happen? If the socket is a blocking socket, how
+			// can it ever end up in the connecting state? The connect(2) manpage
+			// doesn't prescribe any explicit behavior.
+			return unix.EALREADY, nil
+		} else {
+			return unix.EINPROGRESS, nil
+		}
 	case StateListening:
 		return unix.EINVAL, nil // TODO: what does linux say if you try to connect a listening socket?
 	case StateClosed:
