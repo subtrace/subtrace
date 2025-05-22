@@ -672,7 +672,7 @@ func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
 					Priority:      fr.Priority,
 				}
 				if err := dst.WriteHeaders(p); err != nil {
-					return fmt.Errorf("%T: write headers: %w", err)
+					return fmt.Errorf("%T: write headers: %w", fr, err)
 				}
 
 			case *http2.DataFrame:
