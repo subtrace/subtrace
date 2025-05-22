@@ -79,12 +79,22 @@ message AnnounceStats {
   }
 }
 
+message Keepalive {
+  message V1 {
+  }
+
+  oneof concrete {
+    V1 concrete_v1 = 1;
+  }
+}
+
 message Message {
   message V1 {
     oneof underlying {
       Event event = 1;
       SetSubscriberConfig set_subscriber_config = 2;
       AnnounceStats announce_stats = 3;
+      Keepalive keepalive = 4;
     }
   }
 

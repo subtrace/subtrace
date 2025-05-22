@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"golang.org/x/term"
+	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
 	"subtrace.dev/pubsub"
 	"subtrace.dev/rpc"
@@ -195,6 +196,9 @@ func (p *publisher) Loop(ctx context.Context) {
 		}
 	}
 
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -220,6 +224,30 @@ func (p *publisher) Loop(ctx context.Context) {
 				} else {
 					break
 				}
+			}
+		case <-ticker.C:
+			if conn == nil {
+				continue
+			}
+
+			b, err := proto.Marshal(&pubsub.Message{
+				Concrete: &pubsub.Message_ConcreteV1{
+					ConcreteV1: &pubsub.Message_V1{
+						Underlying: &pubsub.Message_V1_Keepalive{
+							Keepalive: &pubsub.Keepalive{},
+						},
+					},
+				},
+			})
+			if err != nil {
+				slog.Debug("keepalive: marshal proto", "err", err)
+				continue
+			}
+
+			if err := conn.Write(ctx, websocket.MessageBinary, b); err != nil {
+				slog.Debug("keepalive: failed to write to websocket", "err", err)
+				conn.CloseNow()
+				conn = nil
 			}
 		}
 	}
