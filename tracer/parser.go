@@ -34,6 +34,21 @@ import (
 
 var PayloadLimitBytes int64 = 4096 // bytes
 
+var sendReflector, sendTunneler bool
+
+func init() {
+	switch strings.ToLower(os.Getenv("SUBTRACE_REFLECTOR")) {
+	case "1", "t", "true", "y", "yes":
+		sendReflector, sendTunneler = true, false
+	case "0", "f", "false", "n", "no":
+		sendReflector, sendTunneler = false, true
+	case "both":
+		sendReflector, sendTunneler = true, true
+	default:
+		sendReflector, sendTunneler = true, false
+	}
+}
+
 type Parser struct {
 	global *global.Global
 	event  *event.Event
@@ -352,6 +367,11 @@ func (p *Parser) include(tags map[string]string, entry *har.Entry) bool {
 }
 
 func (p *Parser) Finish() error {
+	if sendReflector {
+		DefaultPublisher.inflight.Add(1)
+		defer DefaultPublisher.inflight.Done()
+	}
+
 	p.wg.Wait()
 	if err := errors.Join(<-p.errs, <-p.errs); err != nil {
 		return err
@@ -413,17 +433,6 @@ func (p *Parser) Finish() error {
 		return nil
 	}
 
-	var sendReflector, sendTunneler bool
-	switch strings.ToLower(os.Getenv("SUBTRACE_REFLECTOR")) {
-	case "1", "t", "true", "y", "yes":
-		sendReflector, sendTunneler = true, false
-	case "0", "f", "false", "n", "no":
-		sendReflector, sendTunneler = false, true
-	case "both":
-		sendReflector, sendTunneler = true, true
-	default:
-		sendReflector, sendTunneler = true, false
-	}
 	if sendReflector {
 		if err := p.sendReflector(tags, json, loglines); err != nil {
 			slog.Error("failed to publish event to reflector", "eventID", p.event.Get("event_id"), "err", err)
@@ -465,13 +474,7 @@ func (p *Parser) sendReflector(tags map[string]string, json []byte, loglines []s
 	if err != nil {
 		return fmt.Errorf("marshal proto: %w", err)
 	}
-
-	select {
-	case DefaultPublisher.ch <- b:
-		return nil
-	default:
-		return fmt.Errorf("publisher channel buffer full")
-	}
+	return DefaultPublisher.queueWrite(b)
 }
 
 type sampler struct {

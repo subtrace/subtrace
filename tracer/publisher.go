@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/term"
@@ -21,7 +22,9 @@ import (
 var DefaultPublisher = &publisher{ch: make(chan []byte, 4096)}
 
 type publisher struct {
-	ch chan []byte
+	ch       chan []byte
+	inflight sync.WaitGroup
+	queued   sync.WaitGroup
 }
 
 func (p *publisher) dialSingle(ctx context.Context) (*websocket.Conn, string, error) {
@@ -88,7 +91,6 @@ func (p *publisher) dialSingle(ctx context.Context) (*websocket.Conn, string, er
 func (p *publisher) wait(ctx context.Context, dur time.Duration) bool {
 	timer := time.NewTimer(dur)
 	defer timer.Stop()
-
 	select {
 	case <-ctx.Done():
 		return false
@@ -177,6 +179,17 @@ func (p *publisher) showURL(val string) {
 	)
 }
 
+func (p *publisher) queueWrite(b []byte) error {
+	p.queued.Add(1)
+	select {
+	case DefaultPublisher.ch <- b:
+		return nil
+	default:
+		p.queued.Done()
+		return fmt.Errorf("publisher channel buffer full")
+	}
+}
+
 func (p *publisher) Loop(ctx context.Context) {
 	var conn *websocket.Conn
 	defer func() {
@@ -218,9 +231,42 @@ func (p *publisher) Loop(ctx context.Context) {
 						}
 					}
 				} else {
+					p.queued.Done()
 					break
 				}
 			}
 		}
+	}
+}
+
+func (p *publisher) Flush(timeout time.Duration) (flushed bool) {
+	waitEmpty := func(timeout time.Duration, wg *sync.WaitGroup) bool {
+		ch := make(chan struct{})
+		go func() {
+			defer close(ch)
+			wg.Wait()
+		}()
+
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+
+		select {
+		case <-ch:
+			return true
+		case <-timer.C:
+			return false
+		}
+	}
+
+	start := time.Now()
+	waitEmpty(timeout/2, &p.inflight)
+	if left := timeout - time.Since(start); left > 0 {
+		return waitEmpty(left, &p.queued)
+	} else {
+		// This can happen only if timeout is zero or if the first Go timer
+		// triggered inaccurately. Both are weird outcomes but there's no way for
+		// us to actually guarantee to the caller that we've flushed all data, so
+		// returning false is the only thing that makes sense.
+		return false
 	}
 }

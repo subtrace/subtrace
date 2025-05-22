@@ -306,6 +306,14 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 
 	if os.Getenv("SUBTRACE_TOKEN") != "" || c.flags.devtools == "" {
 		go tracer.DefaultPublisher.Loop(ctx)
+		defer func() {
+			// TODO: should this be a different timeout value? or maybe wait forever
+			// until some kind of forced user cancel (e.g. ctrl+c)? a dumb and simple
+			// one second timeout is a good place to start.
+			if flushed := tracer.DefaultPublisher.Flush(time.Second); !flushed {
+				slog.Warn("subtrace might be exiting with unflushed data remaining in buffer")
+			}
+		}()
 	}
 
 	go stats.Loop(ctx)
