@@ -176,6 +176,8 @@ func (s *subscriber) initFilters(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return nil
+	case <-s.ready:
+		return nil
 	case err := <-s.errs:
 		return err
 	}
@@ -300,6 +302,7 @@ func (s *subscriber) handleMessageV1(x *pubsub.Message_V1) error {
 		err = s.Event(x.Event)
 	case *pubsub.Message_V1_SetSubscriberConfig:
 		err = s.SetSubscriberConfig(x.SetSubscriberConfig)
+	case *pubsub.Message_V1_AnnounceStats:
 	default:
 		err = fmt.Errorf("unknown type")
 	}
@@ -333,7 +336,7 @@ func dialWebsocket(ctx context.Context) (*websocket.Conn, error) {
 		return nil, fmt.Errorf("get websocket url: %w", err)
 	}
 
-	slog.Debug("dialing publisher websocket", "namespaceID", u.Query().Get("namespaceID"), "expiry", u.Query().Get("expiry"))
+	slog.Debug("dialing subscriber websocket", "namespaceID", u.Query().Get("namespaceID"), "expiry", u.Query().Get("expiry"))
 	conn, resp, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPHeader: rpc.GetHeader()})
 	if err != nil {
 		err := fmt.Errorf("websocket dial: %w", err)
