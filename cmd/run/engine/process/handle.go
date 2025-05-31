@@ -148,7 +148,7 @@ func (p *Process) handleOpen(n *seccomp.Notif, dirfd int, pathAddr uintptr, flag
 		return fmt.Errorf("inject ephemeral CA: lseek: %w", err)
 	}
 
-	if _, err := n.AddFD(memfd, flags); err != nil { // we don't care about the fd value
+	if _, err := n.AddFD(memfd, flags&unix.O_CLOEXEC); err != nil { // we don't care about the fd value
 		return fmt.Errorf("addfd: %w", err)
 	}
 	return nil
