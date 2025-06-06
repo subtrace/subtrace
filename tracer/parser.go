@@ -211,25 +211,27 @@ func (p *Parser) UseRequest(req *http.Request) {
 		p.timings.Send = time.Since(start).Milliseconds()
 
 		text := sampler.data[:sampler.used]
-		switch req.Header.Get("content-encoding") {
-		case "gzip":
-			gr, err := gzip.NewReader(bytes.NewBuffer(text))
-			if err != nil {
-				p.errs <- fmt.Errorf("create gzip reader: %w", err)
-				return
-			}
-			if raw, err := io.ReadAll(gr); err != nil {
-				p.errs <- fmt.Errorf("read gzip: %w", err)
-				return
-			} else {
-				text = raw
-			}
-		case "br":
-			if raw, err := io.ReadAll(brotli.NewReader(bytes.NewBuffer(text))); err != nil {
-				p.errs <- fmt.Errorf("decode brotli: %w", err)
-				return
-			} else {
-				text = raw
+		if !sampler.over {
+			switch req.Header.Get("content-encoding") {
+			case "gzip":
+				gr, err := gzip.NewReader(bytes.NewBuffer(text))
+				if err != nil {
+					p.errs <- fmt.Errorf("create gzip reader: %w", err)
+					return
+				}
+				if raw, err := io.ReadAll(gr); err != nil {
+					p.errs <- fmt.Errorf("read gzip: %w", err)
+					return
+				} else {
+					text = raw
+				}
+			case "br":
+				if raw, err := io.ReadAll(brotli.NewReader(bytes.NewBuffer(text))); err != nil {
+					p.errs <- fmt.Errorf("decode brotli: %w", err)
+					return
+				} else {
+					text = raw
+				}
 			}
 		}
 
@@ -288,25 +290,27 @@ func (p *Parser) UseResponse(resp *http.Response) {
 		p.timings.Receive = time.Since(start).Milliseconds()
 
 		text := sampler.data[:sampler.used]
-		switch resp.Header.Get("content-encoding") {
-		case "gzip":
-			gr, err := gzip.NewReader(bytes.NewBuffer(text))
-			if err != nil {
-				p.errs <- fmt.Errorf("create gzip reader: %w", err)
-				return
-			}
-			if raw, err := io.ReadAll(gr); err != nil {
-				p.errs <- fmt.Errorf("read gzip: %w", err)
-				return
-			} else {
-				text = raw
-			}
-		case "br":
-			if raw, err := io.ReadAll(brotli.NewReader(bytes.NewBuffer(text))); err != nil {
-				p.errs <- fmt.Errorf("decode brotli: %w", err)
-				return
-			} else {
-				text = raw
+		if !sampler.over {
+			switch resp.Header.Get("content-encoding") {
+			case "gzip":
+				gr, err := gzip.NewReader(bytes.NewBuffer(text))
+				if err != nil {
+					p.errs <- fmt.Errorf("create gzip reader: %w", err)
+					return
+				}
+				if raw, err := io.ReadAll(gr); err != nil {
+					p.errs <- fmt.Errorf("read gzip: %w", err)
+					return
+				} else {
+					text = raw
+				}
+			case "br":
+				if raw, err := io.ReadAll(brotli.NewReader(bytes.NewBuffer(text))); err != nil {
+					p.errs <- fmt.Errorf("decode brotli: %w", err)
+					return
+				} else {
+					text = raw
+				}
 			}
 		}
 
@@ -482,6 +486,7 @@ type sampler struct {
 	errs chan error
 	used int64
 	data []byte
+	over bool
 }
 
 func newSampler(orig io.ReadCloser) *sampler {
@@ -512,6 +517,7 @@ func (s *sampler) Read(b []byte) (int, error) {
 	if n > 0 && s.used < PayloadLimitBytes {
 		c := int64(n)
 		if s.used+c > PayloadLimitBytes {
+			s.over = true
 			c = PayloadLimitBytes - s.used
 		}
 		s.used += int64(copy(s.data[s.used:s.used+c], b[0:c]))
