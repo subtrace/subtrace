@@ -203,6 +203,10 @@ func (p *Parser) UseRequest(req *http.Request) {
 			}
 		}
 
+		for i := range h.Cookies {
+			h.Cookies[i].Value = p.global.Config.SantizeCredential(h.Cookies[i].Value)
+		}
+
 		start := time.Now()
 		if err := <-sampler.errs; err != nil {
 			p.errs <- fmt.Errorf("read request body: %w", err)
@@ -280,6 +284,10 @@ func (p *Parser) UseResponse(resp *http.Response) {
 			case "set-cookie":
 				h.Headers[i].Value = p.global.Config.SantizeCredential(h.Headers[i].Value)
 			}
+		}
+
+		for i := range h.Cookies {
+			h.Cookies[i].Value = p.global.Config.SantizeCredential(h.Cookies[i].Value)
 		}
 
 		start = time.Now()
