@@ -308,7 +308,7 @@ func (e *Engine) handle(n *seccomp.Notif) {
 		// The target's syscall was probably interrupted by a signal. We
 		// don't need to do anything more here.
 	default:
-		slog.Error(fmt.Sprintf("critical error in handling %s", syscalls.GetName(n.Syscall)), "notif", n, "proc", p, "err", err2)
+		panic(fmt.Errorf("critical error in handling %s, notif=%v, proc=%v: %w", syscalls.GetName(n.Syscall), n, p, err2))
 	}
 }
 

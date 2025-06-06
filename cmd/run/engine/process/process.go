@@ -134,6 +134,15 @@ func (p *Process) LogValue() slog.Value {
 	}
 }
 
+func (p *Process) String() string {
+	select {
+	case <-p.Exited:
+		return fmt.Sprintf("process{pid=%d,pifdf=%v,exited=true}", p.PID, p.pidfd)
+	default:
+		return fmt.Sprintf("process{pid=%d,pidfd=%v,exited=false}", p.PID, p.pidfd)
+	}
+}
+
 // installSocket installs a socket into the process's file descriptor table and
 // completes the seccomp notification.
 func (p *Process) installSocket(n *seccomp.Notif, sock *socket.Socket, flags int) error {
