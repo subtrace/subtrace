@@ -49,6 +49,18 @@ func init() {
 	}
 }
 
+type WebsocketMessage struct {
+	Type   string  `json:"type"`
+	Time   float64 `json:"time"`
+	Opcode int     `json:"opcode"`
+	Data   string  `json:"data"`
+}
+
+type extendedHarEntry struct {
+	*har.Entry
+	WebSocketMessages []*WebsocketMessage `json:"_webSocketMessages"`
+}
+
 type Parser struct {
 	global *global.Global
 	event  *event.Event
@@ -62,6 +74,8 @@ type Parser struct {
 
 	requestTrailer  http.Header
 	responseTrailer http.Header
+
+	websocketMessages []*WebsocketMessage
 
 	journalIdx uint64
 }
@@ -345,6 +359,10 @@ func (p *Parser) UseResponse(resp *http.Response) {
 	}()
 }
 
+func (p *Parser) UseWebsocketMessages(msgs []*WebsocketMessage) {
+	p.websocketMessages = msgs
+}
+
 func (p *Parser) SetRequestTrailer(tr http.Header) {
 	p.requestTrailer = tr
 }
@@ -394,13 +412,16 @@ func (p *Parser) Finish() error {
 		loglines = p.global.Journal.CopyFrom(p.journalIdx)
 	}
 
-	entry := &har.Entry{
-		ID:              p.event.Get("event_id"),
-		StartedDateTime: p.begin.UTC(),
-		Time:            time.Since(p.begin).Milliseconds(),
-		Request:         p.request,
-		Response:        p.response,
-		Timings:         &p.timings,
+	entry := &extendedHarEntry{
+		Entry: &har.Entry{
+			ID:              p.event.Get("event_id"),
+			StartedDateTime: p.begin.UTC(),
+			Time:            time.Since(p.begin).Milliseconds(),
+			Request:         p.request,
+			Response:        p.response,
+			Timings:         &p.timings,
+		},
+		WebSocketMessages: p.websocketMessages,
 	}
 
 	for k, v := range stats.Load() {
@@ -414,7 +435,7 @@ func (p *Parser) Finish() error {
 	tmpl.CopyFrom(p.event)
 	tags := tmpl.Map()
 
-	if !p.include(tags, entry) {
+	if !p.include(tags, entry.Entry) {
 		return nil
 	}
 
