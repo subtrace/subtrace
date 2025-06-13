@@ -300,6 +300,10 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		}
 	}
 
+	if err := socket.Init(); err != nil {
+		return 1, fmt.Errorf("init socket: %w", err)
+	}
+
 	if os.Getenv("SUBTRACE_TOKEN") != "" && os.Getenv("SUBTRACE_LINK_ID_OVERRIDE") != "" {
 		slog.Debug("SUBTRACE_LINK_ID_OVERRIDE is ignored when SUBTRACE_TOKEN is set")
 	}

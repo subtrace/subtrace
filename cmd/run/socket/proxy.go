@@ -7,6 +7,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +19,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -153,14 +156,30 @@ func (p *proxy) start() {
 }
 
 var isHTTP2Enabled = false
+var isWebsocketEnabled = false
+var websocketTimeLimit time.Duration = 110 * time.Second
 
-func init() {
+func Init() error {
 	for _, name := range []string{"SUBTRACE_HTTP2", "SUBTRACE_GRPC"} {
 		switch strings.ToLower(os.Getenv(name)) {
 		case "1", "y", "yes", "t", "true":
 			isHTTP2Enabled = true
 		}
 	}
+
+	switch strings.ToLower(os.Getenv("SUBTRACE_WEBSOCKET")) {
+	case "1", "t", "true", "y", "yes":
+		isWebsocketEnabled = true
+		val := os.Getenv("SUBTRACE_WEBSOCKET_TIME_LIMIT")
+		if val != "" {
+			t, err := strconv.Atoi(val)
+			if err != nil {
+				return fmt.Errorf("parse SUBTRACE_WEBSOCKET_TIME_LIMIT: %w", err)
+			}
+			websocketTimeLimit = time.Duration(t) * time.Second
+		}
+	}
+	return nil
 }
 
 // proxyOptimistic peeks at buffered bytes available on the client side to
@@ -414,12 +433,39 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				defer resp.Body.Close()
 				io.Copy(io.Discard, resp.Body)
 			}()
-			if err := parser.Finish(); err != nil {
-				slog.Error("failed to finish HAR parser", "eventID", event.Get("event_id"), "err", err)
-			}
 
 			if resp.StatusCode == http.StatusSwitchingProtocols {
-				// We don't support other protocols at the moment (e.g. websocket).
+				upgrade := req.Header.Get("upgrade")
+				if isWebsocketEnabled && strings.ToLower(upgrade) == "websocket" {
+					w := newWebsocket(bcr, bsr, p.isOutgoing)
+					msgs, err := w.proxy()
+					switch {
+					case err == nil || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF):
+						parser.UseWebsocketMessages(msgs)
+					case errors.Is(err, errWebsocketPayloadLimitExceeded), errors.Is(err, errWebsocketTimeLimitExceeded):
+						slog.Debug("tracer: proxy websocket", "err", err)
+						parser.UseWebsocketMessages(msgs)
+					case errors.Is(err, errWebsocketExtensionsNotSupported):
+						// If the websocket uses extensions, it's possible that we parsed some of the messages
+						// correctly before the extensions kicked in (eg: per-message deflate). In this case,
+						// avoid showing the user a partial set of messages, since that could be confusing.
+						slog.Debug("tracer: proxy websocket", "err", err)
+					default:
+						errs <- fmt.Errorf("tracer: proxy websocket: %w", err)
+						return
+					}
+
+					if err := parser.Finish(); err != nil {
+						slog.Error("failed to finish HAR parser for websocket", "eventID", event.Get("event_id"), "err", err)
+					}
+					errs <- nil
+					return
+				}
+
+				if err := parser.Finish(); err != nil {
+					slog.Error(fmt.Sprintf("failed to finish HAR parser for %s", upgrade), "eventID", event.Get("event_id"), "err", err)
+				}
+
 				slog.Debug("proxy: dropping into fallback copy after status 101 Switching Protocols", "proxy", p, "eventID", event.Get("event_id"), "tags.http_req_upgrade", req.Header.Get("upgrade"))
 				if err := p.discardMulti(bcr, bsr); err != nil {
 					errs <- fmt.Errorf("discard after HTTP 101: %w", err)
@@ -427,6 +473,10 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				}
 				errs <- nil
 				return
+			}
+
+			if err := parser.Finish(); err != nil {
+				slog.Error("failed to finish HAR parser for http/1", "eventID", event.Get("event_id"), "err", err)
 			}
 		}
 	}()
@@ -457,6 +507,286 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 		return fmt.Errorf("proxy http: %w", err)
 	}
 	return nil
+}
+
+const (
+	wsOpcodeContinuation = 0x0
+	wsOpcodeText         = 0x1
+	wsOpcodeBinary       = 0x2
+	wsOpcodeClose        = 0x8
+	wsOpcodePing         = 0x9
+	wsOpcodePong         = 0xA
+)
+
+var errWebsocketPayloadLimitExceeded = errors.New("websocket payload limit exceeded")
+var errWebsocketTimeLimitExceeded = errors.New("websocket time limit exceeded")
+var errWebsocketExtensionsNotSupported = errors.New("websocket extensions not supported")
+
+type websocketFrame struct {
+	fin     bool
+	op      byte
+	payload []byte
+}
+
+type websocket struct {
+	cli        io.Reader
+	srv        io.Reader
+	isOutgoing bool
+
+	n atomic.Uint64
+
+	mu   sync.RWMutex
+	msgs []*tracer.WebsocketMessage
+}
+
+func newWebsocket(cli, srv io.Reader, isOutgoing bool) *websocket {
+	w := &websocket{
+		cli:        cli,
+		srv:        srv,
+		isOutgoing: isOutgoing,
+	}
+	w.n.Store(uint64(tracer.PayloadLimitBytes))
+	return w
+}
+
+func (w *websocket) addMessage(op byte, payload []byte, isClient bool, t time.Time) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	data := ""
+	if op == wsOpcodeText {
+		data = string(payload)
+	} else {
+		data = base64.StdEncoding.EncodeToString(payload)
+	}
+
+	var dir string
+	if (isClient && w.isOutgoing) || (!isClient && !w.isOutgoing) {
+		dir = "send"
+	} else {
+		dir = "receive"
+	}
+
+	w.msgs = append(w.msgs, &tracer.WebsocketMessage{
+		Type:   dir,
+		Time:   float64(t.UnixNano()) / 1e9,
+		Opcode: int(op),
+		Data:   data,
+	})
+}
+
+func (w *websocket) getMessages() []*tracer.WebsocketMessage {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return append([]*tracer.WebsocketMessage{}, w.msgs...)
+}
+
+// readFull reads len(p) bytes from the client or server reader, enforcing a shared
+// byte limit across both. Returns an error if the limit is exceeded. Safe for both
+// the client and server to call concurrently.
+func (w *websocket) readFull(isClient bool, p []byte) (int, error) {
+	l := uint64(len(p))
+
+	for {
+		remaining := w.n.Load()
+		if remaining < l {
+			return 0, fmt.Errorf("%w: limit=%d, have=%d, want=%d, msgsRead=%d", errWebsocketPayloadLimitExceeded, tracer.PayloadLimitBytes, remaining, l, len(w.getMessages()))
+		}
+
+		if w.n.CompareAndSwap(remaining, remaining-l) {
+			var r io.Reader
+			if isClient {
+				r = w.cli
+			} else {
+				r = w.srv
+			}
+
+			n, err := io.ReadFull(r, p)
+			if err != nil {
+				w.n.Add(l - uint64(n))
+				return n, err
+			}
+			return n, nil
+		}
+	}
+}
+
+func (w *websocket) readWebsocketFrame(isClient bool) (*websocketFrame, error) {
+	header := make([]byte, 2)
+	if _, err := w.readFull(isClient, header); err != nil {
+		return nil, fmt.Errorf("read header: %w", err)
+	}
+
+	fin := header[0]&0x80 != 0
+
+	rsv := header[0] & 0x70
+	// TODO (sachin): support websocket extensions
+	if rsv != 0 {
+		return nil, fmt.Errorf("%w: RSV1=%t, RSV2=%t, RSV3=%t", errWebsocketExtensionsNotSupported, rsv&0x40 != 0, rsv&0x20 != 0, rsv&0x10 != 0)
+	}
+
+	opcode := header[0] & 0x0F
+
+	masked := header[1]&0x80 != 0
+	if isClient && !masked {
+		return nil, fmt.Errorf("client sent unmasked frame")
+	}
+
+	switch opcode {
+	case wsOpcodeContinuation, wsOpcodeText, wsOpcodeBinary, wsOpcodePing, wsOpcodePong, wsOpcodeClose:
+	default:
+		return nil, fmt.Errorf("invalid opcode: %x", opcode)
+	}
+
+	payloadLen := uint64(header[1] & 0x7F)
+	if payloadLen == 126 {
+		ext := make([]byte, 2)
+		if _, err := w.readFull(isClient, ext); err != nil {
+			return nil, fmt.Errorf("read extended length (len=126): %w", err)
+		}
+		payloadLen = uint64(binary.BigEndian.Uint16(ext))
+	} else if payloadLen == 127 {
+		ext := make([]byte, 8)
+		if _, err := w.readFull(isClient, ext); err != nil {
+			return nil, fmt.Errorf("read extended length (len=127): %w", err)
+		}
+		payloadLen = binary.BigEndian.Uint64(ext)
+	}
+
+	mask := make([]byte, 4)
+	if masked {
+		if _, err := w.readFull(isClient, mask); err != nil {
+			return nil, fmt.Errorf("read mask: %w", err)
+		}
+	}
+
+	// Check beforehand so we don't allocate arbitrarily large amounts of memory
+	// for the payload. All the other reads use fixed size buffers, so they're fine.
+	remaining := w.n.Load()
+	if remaining < payloadLen {
+		return nil, fmt.Errorf("%w: limit=%d, have=%d, want=%d, msgsRead=%d", errWebsocketPayloadLimitExceeded, tracer.PayloadLimitBytes, remaining, payloadLen, len(w.getMessages()))
+	}
+
+	payload := make([]byte, payloadLen)
+	if _, err := w.readFull(isClient, payload); err != nil {
+		return nil, fmt.Errorf("read payload: %w", err)
+	}
+
+	if masked {
+		for i := range payload {
+			payload[i] ^= mask[i%4]
+		}
+	}
+
+	return &websocketFrame{
+		fin:     fin,
+		op:      opcode,
+		payload: payload,
+	}, nil
+}
+
+func (w *websocket) proxy() ([]*tracer.WebsocketMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), websocketTimeLimit)
+	defer cancel()
+	errs := make(chan error, 2)
+
+	readLoop := func(isClient bool) {
+		var payload []byte
+		var op byte
+		var t time.Time
+		first := true
+
+		type frameResult struct {
+			frame *websocketFrame
+			err   error
+		}
+		for {
+			ch := make(chan frameResult, 1)
+			go func() {
+				frame, err := w.readWebsocketFrame(isClient)
+				select {
+				case <-ctx.Done():
+				case ch <- frameResult{frame, err}:
+				}
+			}()
+
+			var frame *websocketFrame
+			select {
+			case <-ctx.Done():
+				return
+			case result := <-ch:
+				if result.err != nil {
+					errs <- fmt.Errorf("read frame (isClient=%t): %w", isClient, result.err)
+					return
+				}
+				frame = result.frame
+			}
+
+			switch frame.op {
+			case wsOpcodeContinuation:
+				if first {
+					errs <- fmt.Errorf("unexpected continuation frame (isClient=%t)", isClient)
+					return
+				}
+				payload = append(payload, frame.payload...)
+				if frame.fin {
+					w.addMessage(op, payload, isClient, t)
+					payload = nil
+					first = true
+				}
+			case wsOpcodeText, wsOpcodeBinary:
+				if !first {
+					errs <- fmt.Errorf("received new data frame before previous message finished (isClient=%t)", isClient)
+					return
+				}
+				t = time.Now()
+				op = frame.op
+
+				payload = append(payload, frame.payload...)
+				first = frame.fin
+				if frame.fin {
+					w.addMessage(op, payload, isClient, t)
+					payload = nil
+				}
+			case wsOpcodePing, wsOpcodePong, wsOpcodeClose:
+				if !frame.fin {
+					errs <- fmt.Errorf("received fragmented control frame (isClient=%t)", isClient)
+					return
+				}
+
+				if frame.op == wsOpcodeClose {
+					errs <- nil
+					return
+				}
+
+				continue
+			default:
+				errs <- fmt.Errorf("unknown opcode (isClient=%t): %x", isClient, frame.op)
+				return
+			}
+		}
+	}
+
+	go readLoop(true)
+	go readLoop(false)
+
+	select {
+	case err1 := <-errs:
+		if err1 != nil {
+			cancel()
+			<-ctx.Done()
+			return w.getMessages(), fmt.Errorf("read loop: %w", err1)
+		}
+
+		err2 := <-errs
+		if err2 != nil {
+			return w.getMessages(), fmt.Errorf("read loop: %w", err2)
+		}
+
+		return w.getMessages(), nil
+	case <-ctx.Done():
+		return w.getMessages(), fmt.Errorf("%w: bytesRead=%d, limit=%d, msgsRead=%d", errWebsocketTimeLimitExceeded, uint64(tracer.PayloadLimitBytes)-w.n.Load(), tracer.PayloadLimitBytes, len(w.getMessages()))
+	}
 }
 
 type http2Stream struct {
