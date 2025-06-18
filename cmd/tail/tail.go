@@ -116,6 +116,17 @@ func (t *Tail) run(ctx context.Context) error {
 		}
 	}()
 
+	go func() {
+		timer := time.NewTimer(time.Second)
+		defer timer.Stop()
+		for {
+			<-timer.C
+			if err := conn.Ping(context.Background()); err != nil {
+				return
+			}
+		}
+	}()
+
 	if err := sub.initFilters(ctx); err != nil {
 		return fmt.Errorf("init filters: %w", err)
 	}
