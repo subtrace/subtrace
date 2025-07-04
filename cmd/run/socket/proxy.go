@@ -6,6 +6,7 @@ package socket
 import (
 	"bufio"
 	"bytes"
+	"compress/flate"
 	"context"
 	"encoding/base64"
 	"encoding/binary"
@@ -437,7 +438,12 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 			if resp.StatusCode == http.StatusSwitchingProtocols {
 				upgrade := req.Header.Get("upgrade")
 				if isWebsocketEnabled && strings.ToLower(upgrade) == "websocket" {
-					w := newWebsocket(bcr, bsr, p.isOutgoing)
+					w, err := newWebsocket(bcr, bsr, resp, p.isOutgoing)
+					if err != nil {
+						errs <- fmt.Errorf("tracer: create websocket: %w", err)
+						return
+					}
+
 					msgs, err := w.proxy()
 					switch {
 					case err == nil || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF):
@@ -445,11 +451,6 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 					case errors.Is(err, errWebsocketPayloadLimitExceeded), errors.Is(err, errWebsocketTimeLimitExceeded):
 						slog.Debug("tracer: proxy websocket", "err", err)
 						parser.UseWebsocketMessages(msgs)
-					case errors.Is(err, errWebsocketExtensionsNotSupported):
-						// If the websocket uses extensions, it's possible that we parsed some of the messages
-						// correctly before the extensions kicked in (eg: per-message deflate). In this case,
-						// avoid showing the user a partial set of messages, since that could be confusing.
-						slog.Debug("tracer: proxy websocket", "err", err)
 					default:
 						errs <- fmt.Errorf("tracer: proxy websocket: %w", err)
 						return
@@ -520,11 +521,14 @@ const (
 
 var errWebsocketPayloadLimitExceeded = errors.New("websocket payload limit exceeded")
 var errWebsocketTimeLimitExceeded = errors.New("websocket time limit exceeded")
-var errWebsocketExtensionsNotSupported = errors.New("websocket extensions not supported")
 
 type websocketFrame struct {
-	fin     bool
-	op      byte
+	rsv1 bool
+	rsv2 bool
+	rsv3 bool
+	fin  bool
+	op   byte
+
 	payload []byte
 }
 
@@ -535,18 +539,91 @@ type websocket struct {
 
 	n atomic.Uint64
 
+	clientNoContextTakeover bool
+	serverNoContextTakeover bool
+	clientMaxWindowBits     int
+	serverMaxWindowBits     int
+
+	clientSlidingWindow []byte
+	serverSlidingWindow []byte
+	clientInflater      io.ReadCloser
+	serverInflater      io.ReadCloser
+
 	mu   sync.RWMutex
 	msgs []*tracer.WebsocketMessage
 }
 
-func newWebsocket(cli, srv io.Reader, isOutgoing bool) *websocket {
+func newWebsocket(cli, srv io.Reader, resp *http.Response, isOutgoing bool) (*websocket, error) {
 	w := &websocket{
 		cli:        cli,
 		srv:        srv,
 		isOutgoing: isOutgoing,
 	}
 	w.n.Store(uint64(tracer.PayloadLimitBytes))
-	return w
+
+	h := resp.Header.Get("sec-websocket-extensions")
+	exts := strings.SplitSeq(h, ",")
+	for ext := range exts {
+		ext = strings.TrimSpace(ext)
+		ext, found := strings.CutPrefix(ext, "permessage-deflate")
+		if !found {
+			continue
+		}
+
+		options := strings.SplitSeq(ext, ";")
+		for option := range options {
+			option = strings.TrimSpace(option)
+			switch {
+			case option == "client_no_context_takeover":
+				w.clientNoContextTakeover = true
+			case option == "server_no_context_takeover":
+				w.serverNoContextTakeover = true
+			case strings.HasPrefix(option, "client_max_window_bits="):
+				val := strings.TrimPrefix(option, "client_max_window_bits=")
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					continue
+				}
+				w.clientMaxWindowBits = n
+			case strings.HasPrefix(option, "server_max_window_bits="):
+				val := strings.TrimPrefix(option, "server_max_window_bits=")
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					continue
+				}
+				w.serverMaxWindowBits = n
+			}
+		}
+	}
+
+	// ref: https://datatracker.ietf.org/doc/html/rfc7692#section-7.1.2.1
+	//
+	// "...Absence of this parameter in an extension negotiation offer indicates
+	// that the client can receive messages compressed using an LZ77 sliding
+	// window of up to 32,768 bytes." (32768 is 1 << 15)
+	if w.clientMaxWindowBits == 0 {
+		w.clientMaxWindowBits = 15
+	}
+	if w.serverMaxWindowBits == 0 {
+		w.serverMaxWindowBits = 15
+	}
+
+	// ref: https://datatracker.ietf.org/doc/html/rfc7692#section-7.1.2.1
+	//
+	// "A client MAY include the "server_max_window_bits" extension parameter
+	// in an extension negotiation offer.  This parameter has a decimal
+	// integer value without leading zeroes between 8 to 15, inclusive..."
+	//
+	// While being spec compilant, this also ensures that we don't allocate
+	// arbitrarily large amounts of memory for the sliding window.
+	if w.clientMaxWindowBits < 8 || w.clientMaxWindowBits > 15 {
+		return nil, fmt.Errorf("invalid client max window bits: %d", w.clientMaxWindowBits)
+	}
+	if w.serverMaxWindowBits < 8 || w.serverMaxWindowBits > 15 {
+		return nil, fmt.Errorf("invalid server max window bits: %d", w.serverMaxWindowBits)
+	}
+
+	return w, nil
 }
 
 func (w *websocket) addMessage(op byte, payload []byte, isClient bool, t time.Time) {
@@ -611,7 +688,7 @@ func (w *websocket) readFull(isClient bool, p []byte) (int, error) {
 	}
 }
 
-func (w *websocket) readWebsocketFrame(isClient bool) (*websocketFrame, error) {
+func (w *websocket) readFrame(isClient bool) (*websocketFrame, error) {
 	header := make([]byte, 2)
 	if _, err := w.readFull(isClient, header); err != nil {
 		return nil, fmt.Errorf("read header: %w", err)
@@ -620,9 +697,12 @@ func (w *websocket) readWebsocketFrame(isClient bool) (*websocketFrame, error) {
 	fin := header[0]&0x80 != 0
 
 	rsv := header[0] & 0x70
-	// TODO (sachin): support websocket extensions
-	if rsv != 0 {
-		return nil, fmt.Errorf("%w: RSV1=%t, RSV2=%t, RSV3=%t", errWebsocketExtensionsNotSupported, rsv&0x40 != 0, rsv&0x20 != 0, rsv&0x10 != 0)
+	rsv1 := rsv&0x40 != 0
+	rsv2 := rsv&0x20 != 0
+	rsv3 := rsv&0x10 != 0
+
+	if rsv2 || rsv3 {
+		return nil, fmt.Errorf("unsupported extension: RSV1=%t, RSV2=%t, RSV3=%t", rsv1, rsv2, rsv3)
 	}
 
 	opcode := header[0] & 0x0F
@@ -678,14 +758,108 @@ func (w *websocket) readWebsocketFrame(isClient bool) (*websocketFrame, error) {
 		}
 	}
 
+	if rsv1 {
+		switch opcode {
+		case wsOpcodeBinary, wsOpcodeText:
+		default:
+			return nil, fmt.Errorf("received rsv1=true with frame opcode %x", opcode)
+		}
+	}
+
 	return &websocketFrame{
+		rsv1:    rsv1,
+		rsv2:    rsv2,
+		rsv3:    rsv3,
 		fin:     fin,
 		op:      opcode,
 		payload: payload,
 	}, nil
 }
 
+func (w *websocket) cleanup() {
+	if w.clientInflater != nil {
+		w.clientInflater.Close()
+	}
+
+	if w.serverInflater != nil {
+		w.serverInflater.Close()
+	}
+}
+
+func (w *websocket) decompress(b []byte, isClient bool) ([]byte, error) {
+	bCopy := append([]byte{}, b...)
+
+	// ref: https://datatracker.ietf.org/doc/html/rfc7692#section-7.2.2
+	bCopy = append(bCopy, 0x00, 0x00, 0xff, 0xff)
+
+	var inflaterPtr *io.ReadCloser
+	var noCtx bool
+	var bits int
+	var window *[]byte
+
+	if isClient {
+		noCtx = w.clientNoContextTakeover
+		inflaterPtr = &w.clientInflater
+		bits = w.clientMaxWindowBits
+		window = &w.clientSlidingWindow
+	} else {
+		noCtx = w.serverNoContextTakeover
+		inflaterPtr = &w.serverInflater
+		bits = w.serverMaxWindowBits
+		window = &w.serverSlidingWindow
+	}
+
+	var r io.ReadCloser
+	if noCtx {
+		r = flate.NewReader(bytes.NewReader(bCopy))
+		defer r.Close()
+	} else {
+		if *inflaterPtr == nil {
+			r = flate.NewReaderDict(bytes.NewReader(bCopy), *window)
+			*inflaterPtr = r
+		} else {
+			r = *inflaterPtr
+			zr, ok := r.(flate.Resetter)
+			if !ok {
+				return nil, fmt.Errorf("inflater does not implement flate.Resetter")
+			}
+			if err := zr.Reset(bytes.NewReader(bCopy), *window); err != nil {
+				return nil, fmt.Errorf("reset: %w", err)
+			}
+		}
+	}
+
+	data, err := io.ReadAll(r)
+	switch {
+	case err == nil || errors.Is(err, io.ErrUnexpectedEOF):
+		// Not all websocket implementations send a properly terminated DEFLATE stream,
+		// which might cause an io.ErrUnexpectedEOF. Go's flate.NewReader (correctly)
+		// treats these cases as errors, but that's just how real implementations behave.
+		if !noCtx {
+			maxSize := 1 << bits
+			if len(data) >= maxSize {
+				*window = append([]byte{}, data[len(data)-maxSize:]...)
+			} else {
+				totalLen := len(*window) + len(data)
+				if totalLen <= maxSize {
+					*window = append(*window, data...)
+				} else {
+					newWindow := make([]byte, 0, maxSize)
+					newWindow = append(newWindow, (*window)[totalLen-maxSize:]...)
+					newWindow = append(newWindow, data...)
+					*window = newWindow
+				}
+			}
+		}
+		return data, nil
+	default:
+		return nil, fmt.Errorf("read: %w", err)
+	}
+}
+
 func (w *websocket) proxy() ([]*tracer.WebsocketMessage, error) {
+	defer w.cleanup()
+
 	ctx, cancel := context.WithTimeout(context.Background(), websocketTimeLimit)
 	defer cancel()
 	errs := make(chan error, 2)
@@ -694,6 +868,7 @@ func (w *websocket) proxy() ([]*tracer.WebsocketMessage, error) {
 		var payload []byte
 		var op byte
 		var t time.Time
+		var compressed bool
 		first := true
 
 		type frameResult struct {
@@ -703,7 +878,7 @@ func (w *websocket) proxy() ([]*tracer.WebsocketMessage, error) {
 		for {
 			ch := make(chan frameResult, 1)
 			go func() {
-				frame, err := w.readWebsocketFrame(isClient)
+				frame, err := w.readFrame(isClient)
 				select {
 				case <-ctx.Done():
 				case ch <- frameResult{frame, err}:
@@ -730,6 +905,14 @@ func (w *websocket) proxy() ([]*tracer.WebsocketMessage, error) {
 				}
 				payload = append(payload, frame.payload...)
 				if frame.fin {
+					if compressed {
+						var err error
+						payload, err = w.decompress(payload, isClient)
+						if err != nil {
+							errs <- fmt.Errorf("decompress: %w", err)
+							return
+						}
+					}
 					w.addMessage(op, payload, isClient, t)
 					payload = nil
 					first = true
@@ -741,10 +924,20 @@ func (w *websocket) proxy() ([]*tracer.WebsocketMessage, error) {
 				}
 				t = time.Now()
 				op = frame.op
+				compressed = frame.rsv1
 
 				payload = append(payload, frame.payload...)
 				first = frame.fin
 				if frame.fin {
+					if compressed {
+						var err error
+						payload, err = w.decompress(payload, isClient)
+						if err != nil {
+							errs <- fmt.Errorf("decompress: %w", err)
+							return
+						}
+					}
+
 					w.addMessage(op, payload, isClient, t)
 					payload = nil
 				}
