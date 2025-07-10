@@ -69,18 +69,22 @@ func (j *Journal) addLine(line string) {
 	j.idx++
 }
 
-func (j *Journal) CopyFrom(start uint64) []string {
+func (j *Journal) CopyFrom(pos uint64) (uint64, []string) {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 
-	numLines := min(j.idx-start, maxLogLines)
+	if pos == j.idx {
+		return j.idx, nil
+	}
+
+	numLines := min(j.idx-pos, uint64(maxLogLines))
 	bufEnd := j.idx % maxLogLines
 	bufStart := (j.idx - numLines) % maxLogLines
 
-	if bufStart <= bufEnd {
-		return append([]string{}, j.buf[bufStart:bufEnd+1]...)
+	if bufStart < bufEnd {
+		return j.idx - numLines, append([]string{}, j.buf[bufStart:bufEnd]...)
 	} else {
-		return append(j.buf[bufStart:], j.buf[:bufEnd+1]...)
+		return j.idx - numLines, append(j.buf[bufStart:], j.buf[:bufEnd]...)
 	}
 }
 
