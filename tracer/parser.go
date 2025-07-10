@@ -407,9 +407,10 @@ func (p *Parser) Finish() error {
 		return err
 	}
 
+	var logidx uint64
 	var loglines []string
 	if journal.Enabled {
-		loglines = p.global.Journal.CopyFrom(p.journalIdx)
+		logidx, loglines = p.global.Journal.CopyFrom(p.journalIdx)
 	}
 
 	entry := &extendedHarEntry{
@@ -467,7 +468,7 @@ func (p *Parser) Finish() error {
 	}
 
 	if sendReflector {
-		if err := p.sendReflector(tags, json, loglines); err != nil {
+		if err := p.sendReflector(tags, json, logidx, loglines); err != nil {
 			slog.Error("failed to publish event to reflector", "eventID", p.event.Get("event_id"), "err", err)
 		}
 	}
@@ -483,7 +484,7 @@ func (p *Parser) Finish() error {
 	return nil
 }
 
-func (p *Parser) sendReflector(tags map[string]string, json []byte, loglines []string) error {
+func (p *Parser) sendReflector(tags map[string]string, json []byte, logidx uint64, loglines []string) error {
 	b, err := proto.Marshal(&pubsub.Message{
 		Concrete: &pubsub.Message_ConcreteV1{
 			ConcreteV1: &pubsub.Message_V1{
@@ -495,7 +496,7 @@ func (p *Parser) sendReflector(tags map[string]string, json []byte, loglines []s
 								HarEntryJson: json,
 								Log: &pubsub.Event_Log{
 									Lines: loglines,
-									Index: p.journalIdx + 1,
+									Index: logidx + 1,
 								},
 							},
 						},
