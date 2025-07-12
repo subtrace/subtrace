@@ -6,7 +6,12 @@ on:
 
 jobs:
   subtrace-binary:
+    name: Build ${{ matrix.os }}/${{ matrix.arch }}
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        os: [linux, darwin]
+        arch: [amd64, arm64]
     steps:
     - uses: actions/checkout@v4
       with:
@@ -17,6 +22,13 @@ jobs:
         path: ./devtools/bundle
         github-token: ${{ secrets.SUBTRACE_ARTIFACT_DOWNLAOD_TOKEN }}
         run-id: 14844225303
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: go-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('**/go.sum', '**/go.mod') }}
+
     - name: Run go mod tidy check
       run: |
         set -e
@@ -28,13 +40,9 @@ jobs:
         version=$(printf "b%03d" "$(git log --oneline | wc -l)")
         echo "version=${version}"
 
-        for os in linux darwin; do
-          for arch in amd64 arm64; do
-            echo "GOOS=${os} GOARCH=${arch}"
-            GOOS=${os} GOARCH=${arch} time make subtrace
-            mv subtrace subtrace-${os}-${arch}
-          done
-        done
+        echo "GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }}"
+        GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} time make subtrace
+        mv subtrace subtrace-${{ matrix.os }}-${{ matrix.arch }}
 
         echo "metadata:"
         file subtrace-*
