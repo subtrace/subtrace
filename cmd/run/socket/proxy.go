@@ -207,6 +207,8 @@ func Init() error {
 // guess the protocol. If a known protocol is found, it passes control to that
 // protocol's handler. Otherwise, it falls back to the raw handler.
 func (p *proxy) proxyOptimistic(cli, srv *bufConn) error {
+	slog.Debug("starting proxyOptimistic", "proxy", p)
+
 	errs := make(chan error, 2)
 
 	// While we need to sample client's TCP bytes to see if it's HTTP and/or TLS
@@ -294,6 +296,7 @@ func (p *proxy) proxyOptimistic(cli, srv *bufConn) error {
 		}
 
 		protocol := guessProtocol(sample)
+		slog.Debug("guessed protocol", "proxy", p, "protocol", protocol)
 		switch protocol {
 		case "tls":
 			if tls.Enabled {
@@ -314,6 +317,8 @@ func (p *proxy) proxyOptimistic(cli, srv *bufConn) error {
 }
 
 func (p *proxy) proxyTLS(cli, srv *bufConn) error {
+	slog.Debug("starting proxyTLS", "proxy", p)
+
 	if !p.isOutgoing {
 		// We can't intercept incoming TLS requests (yet). Doing so would require
 		// some kind of cooperation from the tracee because the location of the CA
@@ -345,6 +350,8 @@ func (p *proxy) proxyTLS(cli, srv *bufConn) error {
 }
 
 func (p *proxy) proxyHTTP(cli, srv *bufConn) error {
+	slog.Debug("starting proxyHTTP", "proxy", p)
+
 	if cli.Buffered() == 0 {
 		return p.proxyFallback(cli, srv)
 	}
@@ -389,6 +396,8 @@ func (p *proxy) discardMulti(r ...io.Reader) error {
 
 // proxyHTTP proxies an HTTP connection between the client and server.
 func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
+	slog.Debug("starting proxyHTTP1", "proxy", p)
+
 	if !p.isOutgoing && p.global.Devtools != nil && p.global.Devtools.HijackPath != "" {
 		lis := newSimpleListener(cli)
 		defer lis.Close()
@@ -1063,6 +1072,8 @@ func (p *proxy) newHTTP2Stream(streamID uint32) *http2Stream {
 }
 
 func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
+	slog.Debug("starting proxyHTTP2", "proxy", p)
+
 	preface := make([]byte, len(http2.ClientPreface))
 	if _, err := io.ReadFull(cli, preface); err != nil {
 		return fmt.Errorf("read preface: %w", err)
@@ -1328,6 +1339,8 @@ func (p *proxy) proxyHTTP2(cli, srv *bufConn) error {
 }
 
 func (p *proxy) proxyFallback(cli, srv *bufConn) error {
+	slog.Debug("starting proxyFallback", "proxy", p)
+
 	errs := make(chan error, 2)
 
 	go func() {
