@@ -48,7 +48,7 @@ type proxy struct {
 	process  *net.TCPConn
 	external *net.TCPConn
 
-	tlsServerName *string
+	tlsServerName atomic.Pointer[string]
 
 	// skipCloseTCP denotes whether the underlying process and external TCPConn
 	// should be closed. Both (*Socket).Close() and (*proxy).start() race to
@@ -121,9 +121,15 @@ func (p *proxy) LogValue() slog.Value {
 		socket = slog.Group("sock", "fd", p.socket.FD)
 	}
 
+	tlsServerName := slog.String("tlsServerName", "<nil>")
+	if val := p.tlsServerName.Load(); val != nil {
+		tlsServerName = slog.String("tlsServerName", *val)
+	}
+
 	return slog.GroupValue(
 		slog.Bool("outgoing", p.isOutgoing),
 		socket,
+		tlsServerName,
 		process,
 		external,
 	)
@@ -315,12 +321,12 @@ func (p *proxy) proxyTLS(cli, srv *bufConn) error {
 		return p.proxyFallback(cli, srv)
 	}
 
-	if p.tlsServerName != nil {
+	if p.tlsServerName.Load() != nil {
 		// TLS server name already exists? Could this be TLS within TLS? Bail out.
 		return p.proxyFallback(cli, srv)
 	}
 
-	tcli, tsrv, serverName, err := tls.Handshake(cli, srv)
+	tcli, tsrv, serverName, err := tls.Handshake(slog.GroupValue(slog.Any("proxy", p)), cli, srv)
 	if err != nil {
 		// If the ephemeral MITM certificate we generated is not recognized, most
 		// clients will close the connection during TLS handshake. This probably
@@ -330,7 +336,7 @@ func (p *proxy) proxyTLS(cli, srv *bufConn) error {
 		return fmt.Errorf("proxy tls handshake: %w", err)
 	}
 
-	p.tlsServerName = &serverName
+	p.tlsServerName.Store(&serverName)
 	if err := p.proxyOptimistic(newBufConn(tcli), newBufConn(tsrv)); err != nil {
 		return fmt.Errorf("proxy tls: %w", err)
 	}
