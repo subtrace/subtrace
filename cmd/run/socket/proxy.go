@@ -41,11 +41,13 @@ type proxy struct {
 	global *global.Global
 	tmpl   *event.Event
 
+	begin      time.Time
+	socket     *Socket
+	isOutgoing bool
+
 	process  *net.TCPConn
 	external *net.TCPConn
 
-	begin         time.Time
-	isOutgoing    bool
 	tlsServerName *string
 
 	// skipCloseTCP denotes whether the underlying process and external TCPConn
@@ -112,7 +114,19 @@ func (p *proxy) LogValue() slog.Value {
 		external = slog.Group("external", "local", p.external.LocalAddr(), "remote", p.external.RemoteAddr())
 	}
 
-	return slog.GroupValue(slog.Bool("outgoing", p.isOutgoing), process, external)
+	socket := slog.String("sock", "<nil>")
+	if p.socket != nil {
+		// Do not log the whole socket object because that leads to an infinite
+		// recursion due to (*Socket).LogValue() logging the proxy via the inode.
+		socket = slog.Group("sock", "fd", p.socket.FD)
+	}
+
+	return slog.GroupValue(
+		slog.Bool("outgoing", p.isOutgoing),
+		socket,
+		process,
+		external,
+	)
 }
 
 func (p *proxy) start() {

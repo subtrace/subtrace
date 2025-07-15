@@ -105,6 +105,7 @@ func (s *Socket) Connect(addr netip.AddrPort) (syscall.Errno, error) {
 	}
 
 	proxy := newProxy(s.global, s.tmpl, true)
+	proxy.socket = s
 
 	flags, err := unix.FcntlInt(uintptr(s.FD.FD()), unix.F_GETFL, 0)
 	if err != nil {
@@ -694,7 +695,9 @@ func (s *Socket) Accept(flags int) (*Socket, syscall.Errno, error) {
 
 	state := &ImmutableState{state: StateConnected}
 	state.connected.proxy = p
+
 	child := NewSocket(s.global, s.tmpl, newInode(s.Inode.Domain, stat.Ino, state), fd)
+	p.socket = child
 	slog.Debug("created socket", "method", "accept", "sock", child)
 
 	go p.start()
