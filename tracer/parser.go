@@ -404,18 +404,23 @@ func (p *Parser) Finish() error {
 		p.event.Set(k, v)
 	}
 
-	// The event template may have changed since the process started because we add some
-	// tags asynchronously. Grab an updated copy of the template to account for these new
-	// tags.
-	tmpl := p.global.Config.GetEventTemplate()
-	tmpl.CopyFrom(p.event)
-	tmpl.Set("event_id", p.event.Get("event_id"))
-	tmpl.Set("time", p.event.Get("time"))
-	tags := tmpl.Map()
+	tags := p.global.Config.GetEventTemplate()
+	tags.CopyFrom(p.event)
+	tags.Set("event_id", p.event.Get("event_id"))
+	tags.Set("time", p.event.Get("time"))
+
+	// HAR v1.2 doesn't support trailers so for now we just set the counts as a
+	// way to indicate to the user that there were trailers.
+	if p.requestTrailer != nil {
+		tags.Set("request_trailer_count", fmt.Sprintf("%d", len(p.requestTrailer)))
+	}
+	if p.responseTrailer != nil {
+		tags.Set("response_trailer_count", fmt.Sprintf("%d", len(p.responseTrailer)))
+	}
 
 	{
 		begin := time.Now()
-		match, err := p.global.Config.GetMatchingFilter(tags, entry.Entry)
+		match, err := p.global.Config.GetMatchingFilter(tags.Map(), entry.Entry)
 		slog.Debug("evaluated filters", "eventID", p.event.Get("event_id"), "match", match, "err", err, "took", time.Since(begin).Round(time.Nanosecond))
 		switch {
 		case err != nil:
@@ -429,15 +434,6 @@ func (p *Parser) Finish() error {
 		default:
 			panic(fmt.Errorf("unknown filter action %q", match.Action))
 		}
-	}
-
-	// HAR v1.2 doesn't support trailers so for now we just set the counts as a
-	// way to indicate to the user that there were trailers.
-	if p.requestTrailer != nil {
-		tags["request_trailer_count"] = fmt.Sprintf("%d", len(p.requestTrailer))
-	}
-	if p.responseTrailer != nil {
-		tags["response_trailer_count"] = fmt.Sprintf("%d", len(p.responseTrailer))
 	}
 
 	json, err := json.Marshal(entry)
@@ -460,7 +456,7 @@ func (p *Parser) Finish() error {
 
 	if sendReflector {
 		begin := time.Now()
-		err := p.sendReflector(tags, json, logidx, loglines)
+		err := p.sendReflector(tags.Map(), json, logidx, loglines)
 		slog.Debug("sent event to reflector", "eventID", p.event.Get("event_id"), "err", err, "took", time.Since(begin).Round(time.Microsecond))
 		if err != nil {
 			slog.Error("failed to publish event to reflector", "eventID", p.event.Get("event_id"), "err", err)
