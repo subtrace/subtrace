@@ -305,9 +305,9 @@ func (p *proxy) proxyOptimistic(cli, srv *bufConn) error {
 				errs <- p.proxyFallback(cli, srv)
 			}
 		case "http/1":
-			errs <- p.proxyHTTP(cli, srv)
+			errs <- p.proxyHTTP1(cli, srv)
 		case "http/2":
-			errs <- p.proxyHTTP(cli, srv)
+			errs <- p.proxyHTTP2(cli, srv)
 		default:
 			errs <- p.proxyFallback(cli, srv)
 		}
@@ -349,35 +349,6 @@ func (p *proxy) proxyTLS(cli, srv *bufConn) error {
 	return nil
 }
 
-func (p *proxy) proxyHTTP(cli, srv *bufConn) error {
-	slog.Debug("starting proxyHTTP", "proxy", p)
-
-	if cli.Buffered() == 0 {
-		return p.proxyFallback(cli, srv)
-	}
-
-	sample, err := cli.peekSample()
-	if err != nil {
-		return p.proxyFallback(cli, srv)
-	}
-
-	protocol := guessProtocol(sample)
-	switch protocol {
-	case "http/1":
-		return p.proxyHTTP1(cli, srv)
-
-	case "http/2":
-		if isHTTP2Enabled {
-			return p.proxyHTTP2(cli, srv)
-		} else {
-			return p.proxyFallback(cli, srv)
-		}
-
-	default:
-		return p.proxyFallback(cli, srv)
-	}
-}
-
 func (p *proxy) discardMulti(r ...io.Reader) error {
 	var wg sync.WaitGroup
 	errs := make([]error, len(r), len(r))
@@ -394,7 +365,7 @@ func (p *proxy) discardMulti(r ...io.Reader) error {
 	return errors.Join(errs...)
 }
 
-// proxyHTTP proxies an HTTP connection between the client and server.
+// proxyHTTP1 proxies an HTTP connection between the client and server.
 func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 	slog.Debug("starting proxyHTTP1", "proxy", p)
 
