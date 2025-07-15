@@ -409,6 +409,8 @@ func (p *Parser) Finish() error {
 	// tags.
 	tmpl := p.global.Config.GetEventTemplate()
 	tmpl.CopyFrom(p.event)
+	tmpl.Set("event_id", p.event.Get("event_id"))
+	tmpl.Set("time", p.event.Get("time"))
 	tags := tmpl.Map()
 
 	{
