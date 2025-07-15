@@ -41,16 +41,22 @@ type FD struct {
 	refs uint32
 	sema uint32
 
+	origFD int // purely for logging purposes
+
 	_ func() // no copy
 }
 
 // NewFD returns a FD with the reference counter initialized to 1.
 func NewFD(fd int) *FD {
-	return &FD{fd: uint32(fd), refs: 1}
+	return &FD{fd: uint32(fd), refs: 1, origFD: fd}
 }
 
 func (fd *FD) String() string {
-	return fmt.Sprintf("subfd_%d", atomic.LoadUint32(&fd.fd))
+	n := atomic.LoadUint32(&fd.fd)
+	if n == ^uint32(0) {
+		return fmt.Sprintf("subfd_%d[closed]", fd.origFD)
+	}
+	return fmt.Sprintf("subfd_%d", n)
 }
 
 // IncRef increments the ref counter. If fd was closed, it's a no-op and returns false.
