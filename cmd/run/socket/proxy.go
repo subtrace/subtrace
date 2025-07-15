@@ -437,8 +437,11 @@ func (p *proxy) proxyHTTP1(cli, srv *bufConn) error {
 				return
 			}
 
+			eventID := uuid.New()
+			slog.Debug("proxy: http/1: new event", "proxy", p, "eventID", eventID)
+
 			event := p.tmpl.Copy()
-			event.Set("event_id", uuid.New().String())
+			event.Set("event_id", eventID.String())
 
 			parser := tracer.NewParser(p.global, event)
 			parser.UseRequest(req)
@@ -1033,8 +1036,11 @@ type http2Stream struct {
 }
 
 func (p *proxy) newHTTP2Stream(streamID uint32) *http2Stream {
+	eventID := uuid.New()
+	slog.Debug("proxy: http/2: new event", "proxy", p, "eventID", eventID)
+
 	event := p.global.Config.GetEventTemplate()
-	event.Set("event_id", uuid.New().String())
+	event.Set("event_id", eventID.String())
 
 	st := new(http2Stream)
 	st.streamID = streamID
