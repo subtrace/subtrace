@@ -12,8 +12,8 @@ type Action string
 
 const (
 	ActionInvalid Action = ""
-	ActionInclude        = "include"
-	ActionExclude        = "exclude"
+	ActionInclude Action = "include"
+	ActionExclude Action = "exclude"
 )
 
 type Filter struct {
