@@ -239,19 +239,19 @@ func newConfigFromClientHello(chi *tls.ClientHelloInfo) *tls.Config {
 // connections. It returns the plaintext version of each connection. It does
 // not verify the validity of the TLS certificate presented by the upstream
 // server.
-func Handshake(downCipher, upCipher net.Conn) (*tls.Conn, *tls.Conn, string, error) {
+func Handshake(logctx slog.Value, downCipher, upCipher net.Conn) (*tls.Conn, *tls.Conn, string, error) {
 	var upPlain *tls.Conn
 	var serverName string
 	downPlain := tls.Server(downCipher, &tls.Config{
 		GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
 			serverName = chi.ServerName
 
-			slog.Debug("starting upstream TLS handshake", "serverName", chi.ServerName)
+			slog.Debug("starting upstream TLS handshake", "serverName", chi.ServerName, "logctx", logctx)
 			upPlain = tls.Client(upCipher, newConfigFromClientHello(chi))
 			if err := upPlain.Handshake(); err != nil {
 				return nil, fmt.Errorf("upstream handshake: %w", err)
 			}
-			slog.Debug("upstream TLS handshake complete", "serverName", upPlain.ConnectionState().ServerName)
+			slog.Debug("upstream TLS handshake complete", "serverName", upPlain.ConnectionState().ServerName, "logctx", logctx)
 
 			ret := &tls.Config{ServerName: chi.ServerName}
 			if proto := upPlain.ConnectionState().NegotiatedProtocol; proto != "" {
