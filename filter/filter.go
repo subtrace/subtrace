@@ -2,6 +2,7 @@ package filter
 
 import (
 	"fmt"
+	"log/slog"
 	"reflect"
 
 	"github.com/google/cel-go/cel"
@@ -58,6 +59,13 @@ func NewFilter(expr string, action Action) (*Filter, error) {
 		return nil, fmt.Errorf("static test: %w", err)
 	}
 	return f, nil
+}
+
+func (f *Filter) LogValue() slog.Value {
+	if f == nil {
+		return slog.AnyValue(nil)
+	}
+	return slog.GroupValue(slog.String("action", string(f.Action)))
 }
 
 func (f *Filter) Eval(tags map[string]string, entry *har.Entry) (bool, error) {
