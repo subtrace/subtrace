@@ -371,31 +371,6 @@ func (p *Parser) SetResponseTrailer(tr http.Header) {
 	p.responseTrailer = tr
 }
 
-func (p *Parser) include(tags map[string]string, entry *har.Entry) bool {
-	begin := time.Now()
-	defer func() {
-		slog.Debug("evaluated filters", "eventID", p.event.Get("event_id"), "took", time.Since(begin).Round(time.Microsecond))
-	}()
-
-	f, err := p.global.Config.GetMatchingFilter(tags, entry)
-	if err != nil {
-		// fall back to tracing the request if filter eval fails
-		return true
-	}
-	if f == nil {
-		return true
-	}
-
-	switch f.Action {
-	case filter.ActionInclude:
-		return true
-	case filter.ActionExclude:
-		return false
-	default:
-		panic(fmt.Errorf("unknown filter action %q", f.Action))
-	}
-}
-
 func (p *Parser) Finish() error {
 	if sendReflector {
 		DefaultPublisher.inflight.Add(1)
@@ -436,8 +411,22 @@ func (p *Parser) Finish() error {
 	tmpl.CopyFrom(p.event)
 	tags := tmpl.Map()
 
-	if !p.include(tags, entry.Entry) {
-		return nil
+	{
+		begin := time.Now()
+		match, err := p.global.Config.GetMatchingFilter(tags, entry.Entry)
+		slog.Debug("evaluated filters", "eventID", p.event.Get("event_id"), "match", match, "err", err, "took", time.Since(begin).Round(time.Nanosecond))
+		switch {
+		case err != nil:
+			fallthrough // fallthrough to ActionInclude if filter eval fails
+		case match == nil:
+			break
+		case match.Action == filter.ActionInclude:
+			break
+		case match.Action == filter.ActionExclude:
+			return nil
+		default:
+			panic(fmt.Errorf("unknown filter action %q", match.Action))
+		}
 	}
 
 	// HAR v1.2 doesn't support trailers so for now we just set the counts as a
