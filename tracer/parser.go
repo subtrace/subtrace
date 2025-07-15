@@ -457,7 +457,10 @@ func (p *Parser) Finish() error {
 	}
 
 	if sendReflector {
-		if err := p.sendReflector(tags, json, logidx, loglines); err != nil {
+		begin := time.Now()
+		err := p.sendReflector(tags, json, logidx, loglines)
+		slog.Debug("sent event to reflector", "eventID", p.event.Get("event_id"), "err", err, "took", time.Since(begin).Round(time.Microsecond))
+		if err != nil {
 			slog.Error("failed to publish event to reflector", "eventID", p.event.Get("event_id"), "err", err)
 		}
 	}
@@ -468,7 +471,10 @@ func (p *Parser) Finish() error {
 		ev.Set("har_request_method", entry.Request.Method)
 		ev.Set("har_request_url", entry.Request.URL)
 		ev.Set("har_response_status", fmt.Sprintf("%d", entry.Response.Status))
+
+		begin := time.Now()
 		DefaultManager.Insert(ev.String())
+		slog.Debug("sent event to tunneler", "eventID", ev.Get("event_id"), "err", err, "took", time.Since(begin).Round(time.Microsecond))
 	}
 	return nil
 }
