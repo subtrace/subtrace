@@ -146,6 +146,9 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		case errors.Is(err, kernel.ErrUnsupportedVersion):
 			major, minor, _ := kernel.CheckVersion(minKernelVersion, false)
 			fmt.Fprintf(os.Stderr, "subtrace: error: unsupported Linux kernel version (got %d.%d, want %s+)\n", major, minor, minKernelVersion)
+			if os.Getenv("SUBTRACE_ANCIENT_KERNEL") == "" && major == 5 && minor >= 9 {
+				fmt.Fprintf(os.Stderr, "subtrace: tip: you may override this with the SUBTRACE_ANCIENT_KERNEL=1 environment variable (experimental)")
+			}
 			os.Exit(1)
 
 		default:
