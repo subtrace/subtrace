@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
@@ -274,12 +276,7 @@ func (n *Notif) Valid() bool {
 	return errno == 0
 }
 
-func (n *Notif) send(handled bool, ret uintptr, errno syscall.Errno) error {
-	if !n.state.CompareAndSwap(stateReceived, stateReplying) {
-		return unix.EALREADY
-	}
-	defer n.listener.fd.DecRef() // IncRef happened in SECCOMP_IOCTL_NOTIF_RECV
-
+func (n *Notif) sendInner(handled bool, ret uintptr, errno syscall.Errno) error {
 	// From seccomp_unotify(2) man page:
 	//	 If flag contains SECCOMP_USER_NOTIF_FLAG_CONTINUE:
 	//		 error and val fields must be zero
@@ -325,6 +322,15 @@ func (n *Notif) send(handled bool, ret uintptr, errno syscall.Errno) error {
 	}
 }
 
+func (n *Notif) send(handled bool, ret uintptr, errno syscall.Errno) error {
+	if !n.state.CompareAndSwap(stateReceived, stateReplying) {
+		return unix.EALREADY
+	}
+	defer n.listener.fd.DecRef() // IncRef happened in SECCOMP_IOCTL_NOTIF_RECV
+
+	return n.sendInner(handled, ret, errno)
+}
+
 // Skip tells the kernel handle that it needs to handle the intercepted syscall
 // the way it normally would have.
 func (n *Notif) Skip() error {
@@ -336,6 +342,15 @@ func (n *Notif) Skip() error {
 // syscalls that return a file/socket.
 func (n *Notif) Return(ret uintptr, errno syscall.Errno) error {
 	return n.send(true, ret, errno)
+}
+
+var SUBTRACE_SECCOMP_ADDFD_FLAGS primitive.Uint32 = SECCOMP_ADDFD_FLAG_SEND
+
+func init() {
+	switch strings.ToLower(os.Getenv("SUBTRACE_ANCIENT_KERNEL")) {
+	case "1", "t", "true", "y", "yes":
+		SUBTRACE_SECCOMP_ADDFD_FLAGS ^= SECCOMP_ADDFD_FLAG_SEND
+	}
 }
 
 // AddFD atomically installs a file descriptor and completes the notification.
@@ -370,15 +385,24 @@ func (n *Notif) AddFD(fd *fd.FD, flags int) (int, error) {
 
 	var r addfd
 	r.id = primitive.Uint64(n.ID)
-	r.flags = SECCOMP_ADDFD_FLAG_SEND
+	r.flags = SUBTRACE_SECCOMP_ADDFD_FLAGS
 	r.srcFD = primitive.Uint32(fd.FD())
 	r.newFDFlags = primitive.Uint32(flags)
 	b := r.Bytes()
 	target, _, addErrno := unix.Syscall(unix.SYS_IOCTL, uintptr(n.listener.fd.FD()), SECCOMP_IOCTL_NOTIF_ADDFD, uintptr(unsafe.Pointer(&b[0])))
 	switch addErrno {
 	case 0:
-		n.state.CompareAndSwap(stateReplying, stateReplied)
-		return int(target), nil
+		if r.flags&SECCOMP_ADDFD_FLAG_SEND == 0 { // kernel < 5.14
+			switch err := n.sendInner(true, target, 0); err {
+			case nil:
+				return int(target), nil
+			default:
+				return 0, fmt.Errorf("%s: SECCOMP_IOCTL_NOTIF_ADDFD: send after addfd: %w", n, err)
+			}
+		} else { // kernel >= 5.14
+			n.state.CompareAndSwap(stateReplying, stateReplied)
+			return int(target), nil
+		}
 	case unix.ENOENT:
 		n.state.CompareAndSwap(stateReplying, stateCancelled)
 		return 0, fmt.Errorf("%s: %w", n, ErrCancelled)
