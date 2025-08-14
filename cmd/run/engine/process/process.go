@@ -24,6 +24,9 @@ import (
 	"subtrace.dev/global"
 )
 
+var ErrProcessNotFound = errors.New("process not found")
+var ErrPidfdClosed = errors.New("pidfd: file closed")
+
 type Process struct {
 	global *global.Global
 	itab   *socket.InodeTable
@@ -42,6 +45,9 @@ type Process struct {
 func New(global *global.Global, itab *socket.InodeTable, pid int) (*Process, error) {
 	ret, _, errno := unix.Syscall(unix.SYS_PIDFD_OPEN, uintptr(pid), 0, 0)
 	if errno != 0 {
+		if errors.Is(errno, unix.ESRCH) {
+			return nil, fmt.Errorf("pidfd_open %d: %w: %w", pid, ErrProcessNotFound, errno)
+		}
 		return nil, fmt.Errorf("pidfd_open %d: %w", pid, errno)
 	}
 
@@ -58,6 +64,26 @@ func New(global *global.Global, itab *socket.InodeTable, pid int) (*Process, err
 		pidfd:   pidfd,
 		sockets: make(map[int]*socket.Socket),
 	}, nil
+}
+
+func (p *Process) IsRunning() bool {
+	if !p.pidfd.IncRef() {
+		return false
+	}
+	defer p.pidfd.DecRef()
+
+	pidfd := p.pidfd.FD()
+	fds := []unix.PollFd{{Fd: int32(pidfd), Events: unix.POLLIN}}
+	_, err := unix.Poll(fds, 0)
+
+	switch {
+	case err == nil:
+		return fds[0].Revents&unix.POLLIN == 0
+	case errors.Is(err, unix.EINTR):
+		return true
+	default:
+		panic(fmt.Errorf("is running: pid=%d, pidfd=%d: %w", p.PID, p.pidfd, err))
+	}
 }
 
 func (p *Process) getEventTemplate() *event.Event {
@@ -105,6 +131,15 @@ func (p *Process) LogValue() slog.Value {
 		return slog.GroupValue(slog.Int("pid", p.PID), slog.Bool("exited", true))
 	default:
 		return slog.GroupValue(slog.Int("pid", p.PID), slog.Bool("exited", false))
+	}
+}
+
+func (p *Process) String() string {
+	select {
+	case <-p.Exited:
+		return fmt.Sprintf("process{pid=%d,pifdf=%v,exited=true}", p.PID, p.pidfd)
+	default:
+		return fmt.Sprintf("process{pid=%d,pidfd=%v,exited=false}", p.PID, p.pidfd)
 	}
 }
 
@@ -196,7 +231,7 @@ func (p *Process) getFD(targetFD int) (*fd.FD, syscall.Errno) {
 
 func (p *Process) poll() (exited bool, _ error) {
 	if !p.pidfd.IncRef() {
-		return false, fmt.Errorf("pidfd: file closed")
+		return false, ErrPidfdClosed
 	}
 	defer p.pidfd.DecRef()
 
@@ -219,7 +254,7 @@ func (p *Process) Wait() error {
 		// wait on non-children processes (see https://stackoverflow.com/a/1157739).
 		exited, err := p.poll()
 		if err != nil {
-			if errors.Is(err, unix.EBADF) {
+			if errors.Is(err, unix.EBADF) || errors.Is(err, ErrPidfdClosed) {
 				select {
 				case <-p.Exited:
 					return nil
@@ -252,7 +287,7 @@ func (p *Process) markAsExited() (marked bool) {
 	case <-p.Exited:
 		// markAsExited may be called by the pidfd poll (see Wait above) and/or the
 		// SYS_EXIT handler. If SYS_EXIT happens before Wait, the SYS_EXIT call
-		// should get preference. This function must still be called Wait to free
+		// should get preference. This function must still be called by Wait to free
 		// allocated resources because a call from SYS_EXIT isn't guaranteed since
 		// processes may not necessarily exit cleanly every time (ex: SIGKILL).
 		return false
