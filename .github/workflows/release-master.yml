@@ -93,6 +93,7 @@ jobs:
         echo "building nextjs package"
         cd ./etc/subtrace-next
         for f in *; do sha256sum $f 2>/dev/null || true; done
+        npm install
         make build pack
         sha256sum *.tgz
         rm *.tgz
