@@ -90,6 +90,16 @@ jobs:
         make publish
         cd ../..
 
+        echo "building nextjs package"
+        cd ./etc/subtrace-next
+        for f in *; do sha256sum $f 2>/dev/null || true; done
+        make build pack
+        sha256sum *.tgz
+        rm *.tgz
+        npm set //registry.npmjs.org/:_authToken=${{ secrets.SUBTRACE_NPM_PUBLISH_TOKEN }}
+        make publish
+        cd ../..
+
   worker-docker:
     runs-on: ubuntu-24.04
     steps:

@@ -1,0 +1,30 @@
+{
+  "name": "subtrace-next",
+  "version": "0.0.1",
+  "main": "./dist/cjs/index.cjs",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": true,
+  "dependencies": {
+    "ts-proto": "^2.7.7",
+    "next": ">=14"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "esbuild": "0.25.9",
+    "typescript": "5.9.2",
+    "undici-types": "7.13.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/subtrace/subtrace.git"
+  }
+}
