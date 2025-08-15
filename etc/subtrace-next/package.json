@@ -1,6 +1,6 @@
 {
   "name": "subtrace-next",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "main": "./dist/cjs/index.cjs",
   "types": "./dist/esm/index.d.ts",
   "exports": {
