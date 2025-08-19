@@ -246,12 +246,17 @@ async function upload(req: Request, resp: Response, timestamp: string, duration:
   const harEntry = await createHarEntry(req, resp, timestamp, duration);
   const harEntryJson = encoder.encode(JSON.stringify(harEntry));
 
+  const tags = {
+    vercel_region: process.env.VERCEL_REGION ?? "",
+    vercel_deployment_id: process.env.VERCEL_DEPLOYMENT_ID ?? "",
+  };
+
   const data = pubsub.Message.encode({
     concreteV1: {
       event: {
         concreteV1: {
           harEntryJson,
-          tags: {},
+          tags,
           log: undefined,
         },
       },
