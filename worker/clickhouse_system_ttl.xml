@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <metric_log>
+        <database>system</database>
+        <table>metric_log</table>
+        <ttl>event_date + INTERVAL 90 DAY DELETE</ttl>
+    </metric_log>
+
+    <asynchronous_metric_log>
+        <database>system</database>
+        <table>asynchronous_metric_log</table>
+        <ttl>event_date + INTERVAL 90 DAY DELETE</ttl>
+    </asynchronous_metric_log>
+
+    <text_log>
+        <database>system</database>
+        <table>text_log</table>
+        <ttl>event_date + INTERVAL 90 DAY DELETE</ttl>
+    </text_log>
+
+    <query_views_log>
+        <database>system</database>
+        <table>query_views_log</table>
+        <ttl>event_date + INTERVAL 90 DAY DELETE</ttl>
+    </query_views_log>
+
+    <trace_log>
+        <database>system</database>
+        <table>trace_log</table>
+        <ttl>event_date + INTERVAL 90 DAY DELETE</ttl>
+    </trace_log>
+
+    <query_log>
+        <database>system</database>
+        <table>query_log</table>
+        <ttl>event_date + INTERVAL 90 DAY DELETE</ttl>
+    </query_log>
+</clickhouse>

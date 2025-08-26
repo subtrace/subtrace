@@ -7,6 +7,7 @@ RUN --mount=type=cache,target=/go/pkg --mount=type=cache,target=/root/.cache GOA
 FROM clickhouse/clickhouse-server:24.8-alpine
 RUN mv /entrypoint.sh /clickhouse_entrypoint.sh
 COPY --from=build /go/src/subtrace/subtrace /usr/local/bin/subtrace
+COPY worker/clickhouse_system_ttl.xml /etc/clickhouse-server/config.d/
 RUN cat >/subtrace_entrypoint.sh <<EOF
   bash /clickhouse_entrypoint.sh &
   export SUBTRACE_CLICKHOUSE_HOST=localhost
