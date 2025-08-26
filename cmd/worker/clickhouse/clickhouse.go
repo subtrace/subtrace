@@ -49,24 +49,20 @@ func newClient(ctx context.Context, host string, database string) (*Client, erro
 
 func New(ctx context.Context, host string, database string) (*Client, error) {
 	var lastErr error
-	for attempt := 1; attempt < 5; attempt++ {
+	for attempt := 1; attempt < 10; attempt++ {
 		c, err := newClient(ctx, host, database)
 		if err == nil {
 			return c, nil
 		}
 
 		lastErr = err
-		if attempt < 5 {
-			wait := time.Duration(1<<(attempt-1)) * time.Second
-			slog.Error("failed to connect to clickhouse, waiting and retrying", "host", host, "database", database, "err", err, "attempt", attempt, "wait", wait)
+		wait := min(30*time.Second, time.Duration(1<<(attempt-1))*time.Second)
+		slog.Error("failed to connect to clickhouse, waiting and retrying", "host", host, "database", database, "err", err, "attempt", attempt, "wait", wait)
 
-			timer := time.NewTicker(wait)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return nil, ctx.Err()
-			case <-timer.C:
-			}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
 		}
 	}
 
