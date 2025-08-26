@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/peterbourgon/ff/v3"
 	"github.com/peterbourgon/ff/v3/ffcli"
+	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
 	"subtrace.dev/cmd/version"
@@ -69,6 +71,9 @@ func NewCommand() *ffcli.Command {
 }
 
 func (c *Command) entrypoint(ctx context.Context, args []string) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	if err := logging.Init(); err != nil {
 		return fmt.Errorf("init logging: %w", err)
 	}
@@ -78,6 +83,15 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	}
 
 	slog.Info("starting worker node", "release", version.Release, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
+
+	sigCh := make(chan os.Signal, 1)
+	defer signal.Stop(sigCh)
+	signal.Notify(sigCh, unix.SIGINT, unix.SIGTERM, unix.SIGQUIT)
+	go func() {
+		sig := <-sigCh
+		slog.Debug("worker received signal", "signal", sig.String())
+		cancel()
+	}()
 
 	if err := c.initClickhouse(ctx); err != nil {
 		return fmt.Errorf("init clickhouse: %w", err)
