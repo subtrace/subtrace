@@ -90,6 +90,24 @@ jobs:
         make publish
         cd ../..
 
+        echo "building nextjs package"
+        cd ./etc/subtrace-next
+        curr=$(npm pkg get version | tr --delete '"')
+        latest=$(npm view subtrace-next version)
+        dirty=$(git diff --quiet --exit-code HEAD^ HEAD .; echo $?)
+        if [ "$curr" != "$latest" ]; then
+          for f in *; do sha256sum $f 2>/dev/null || true; done
+          npm install
+          make build pack
+          sha256sum *.tgz
+          rm *.tgz
+          npm set //registry.npmjs.org/:_authToken=${{ secrets.SUBTRACE_NPM_PUBLISH_TOKEN }}
+        elif [ "$dirty" -ne 0 ]; then
+          echo "⚠️ Changes made to the subtrace-next package but version not updated in package.json." >&2
+          echo "⚠️ A new version will not be published." >&2
+        fi
+        cd ../..
+
   worker-docker:
     runs-on: ubuntu-24.04
     steps:
