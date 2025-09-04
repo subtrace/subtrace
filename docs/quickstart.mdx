@@ -1,0 +1,75 @@
+---
+title: "Quickstart"
+sidebarTitle: "Quickstart"
+description: "Integrate Subtrace with just one command"
+icon: "rocket"
+---
+
+Subtrace is an API observability tool. It connects your backend to Chrome
+DevTools so that you can inspect the latency of each API request. We'll show
+you how you can start using Subtrace with just a single command.
+
+<Steps>
+  <Step title="Download">
+    Open a terminal and install Subtrace:
+
+    ```bash
+    curl -fsSL https://subtrace.dev/install.sh | sh
+    ```
+  </Step>
+
+  <Step title="Run">
+    Run your backend server startup command with Subtrace:
+
+    <CodeGroup>
+      ```bash Generic
+      subtrace run -- my-app-command
+      ```
+
+      ```bash Node
+      subtrace run -- node server.js
+      ```
+
+      ```bash Go
+      subtrace run -- go run .
+      ```
+
+      ```bash FastAPI
+      subtrace run -- fastapi run main.py
+      ```
+
+      ```bash Flask
+      subtrace run -- flask --app hello run
+      ```
+
+      ```bash Gunicorn
+      subtrace run -- gunicorn -w 4 myapp:app
+      ```
+
+      ```bash Laravel
+      subtrace run -- php artisan serve
+      ```
+    </CodeGroup>
+
+    <Expandable title="example output">
+      <img className="rounded-xl" src="/images/quickstart-link.png" />
+    </Expandable>
+  </Step>
+
+  <Step title="Watch">
+    Open the `subt.link` URL in your browser to watch a live stream of your
+    backend server's network logs!
+
+    <img className="rounded-xl" src="/images/quickstart-screenshot.png" />
+  </Step>
+</Steps>
+
+Check out the guide specific to your backend for next steps:
+
+- **Node**: [Express.js](/nodejs-express)
+- **Python**: [FastAPI](/python-fastapi), [Flask](/python-flask), [Gunicorn](/python-gunicorn)
+- **Others**: [Go](/golang), [Laravel](/php-laravel)
+
+If your language or framework isn't listed here, let us know and we can help
+you get started. Join our [discord server](https://subtrace.dev/discord) or
+email us at [support@subtrace.dev](support@subtrace.dev) for assistance.

@@ -1,0 +1,38 @@
+---
+title: "Using the dashboard"
+sidebarTitle: "Using the dashboard"
+description: "See your app's backend requests in Subtrace"
+icon: "chart-column"
+---
+
+Once you've installed Subtrace and you've signed in to the [dashboard](https://subtrace.dev/dashboard),
+you can view all the requests flowing through your app in real time! You can also inspect the headers,
+payload, and request/response bodies:
+
+<video width="100%" height="100%" controls>
+  <source src="videos/live_requests.mp4" type="video/mp4" />
+</video>
+
+<Info>
+  If your requests have timing information via the
+  [Server-Timing](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing)
+  header, it will show up in the "Timing" tab as seen above.
+</Info>
+
+## Filtering requests
+
+The filter bar in the dashboard allows you to restrict what kind of requests
+show up on the Subtrace dashboard. For example, maybe you want to see only
+requests that look like `api/HealthCheck`. You could use the filter
+`request.url.endsWith("api/HealthCheck")` to achieve this.
+
+Here's the filter in action:
+
+<video width="100%" height="100%" controls>
+  <source src="videos/filter_use.mp4" type="video/mp4" />
+</video>
+
+<Info>
+  The syntax used in the filter bar is the same as in Subtrace's config file.
+  You can find more details about the syntax [here](rules#syntax).
+</Info>

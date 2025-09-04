@@ -1,0 +1,74 @@
+---
+title: "Installing Subtrace on Kubernetes"
+sidebarTitle: "Kubernetes"
+description: "Monitor requests in your Kubernetes clusters, pods and deployments with Subtrace."
+icon: "cubes"
+---
+
+If you use a Kubernetes cluster and you need to monitor your app's requests in
+production, Subtrace is a great fit.
+
+Start by making the following change to your `Dockerfile` to install Subtrace
+in your app's Docker image:
+
+```diff
+- CMD ["node", "./app.js"]
++ RUN curl -fsSL https://subtrace.dev/install.sh | sh
++ CMD ["subtrace", "run", "--", "node", "./app.js"]
+```
+
+Build and push the new Docker image just like you used to before changing your
+Dockerfile to install Subtrace. Then update your Kubernetes pod spec to point
+to the new image. Here is an example `deployment.yaml` for reference:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: my-container
+        image: ghcr.io/NAMESPACE/IMAGE_NAME:latest
+        env:
+        - name: SUBTRACE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: env-secrets
+              key: SUBTRACE_TOKEN
+        securityContext:
+          capabilities:
+            add: ["SYS_PTRACE"]
+```
+
+<Tip>
+Make sure the container has the `SUBTRACE_TOKEN` environment variable in your
+deployment YAML. Typically, this is done with a [Kubernetes secret](https://kubernetes.io/docs/concepts/configuration/secret/), but if your
+app uses an external secret manager, consult its documentation. If you don't
+have a Subtrace token yet, go to the **Tokens** page on the
+[dashboard](https://subtrace.dev/dashboard) and create a tracer token.
+</Tip>
+
+<Tip>
+Don't forget to set the `securityContext` field in the container spec. Subtrace
+needs the `SYS_PTRACE` capability in order to trace your app's requests.
+</Tip>
+
+Finish by applying your changes to the cluster:
+
+```
+kubectl apply -f ./deployment.yaml
+```
+
+And that's it! Send a HTTP request to the [Kubernetes service](https://kubernetes.io/docs/concepts/services-networking/service/)
+corresponding to this deployment and you should see it automatically appear in
+the Subtrace dashboard.

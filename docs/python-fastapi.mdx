@@ -1,0 +1,60 @@
+---
+title: "Python FastAPI + Subtrace"
+sidebarTitle: "FastAPI"
+description: "Connect your FastAPI backend to Chrome DevTools using Subtrace"
+icon: "python"
+---
+
+You can connect your FastAPI backend to Chrome DevTools using Subtrace with
+just one line of code. With Subtrace, you can inspect the status, headers,
+payload, and latency of all API requests so you can debug way faster.
+
+To begin, install Subtrace using the `pip` command:
+
+```python
+pip install subtrace
+```
+
+For this guide, we'll use the following Python FastAPI app as an example:
+
+```python
+# Add this line to install Subtrace on your FastAPI server
+import subtrace
+
+from fastapi import FastAPI
+import requests
+
+app = FastAPI()
+
+counter = 0
+
+@app.get("/counter")
+def get_counter():
+    return {"counter": counter}
+
+@app.post("/uuid")
+def new_uuid():
+    global counter
+    counter += 1
+    return requests.get("https://httpbin.org/uuid").json()
+```
+
+Get a `SUBTRACE_TOKEN` from the Subtrace [dashboard](https://subtrace.dev/dashboard)
+for free to set it as an environment variable.
+
+```bash
+# get a tracer token for free at https://subtrace.dev/dashboard
+export SUBTRACE_TOKEN=
+```
+
+Start your server using the `fastapi` command:
+
+```bash
+fastapi run main.py
+```
+
+And send some requests and see them in Chrome DevTools!
+
+![image](https://github.com/user-attachments/assets/b2ebec37-f411-42c7-80f3-229415231266)
+
+You can find the complete source code used in this demo [here](https://github.com/subtrace/python-fastapi-demo).

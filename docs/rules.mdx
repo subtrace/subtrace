@@ -1,0 +1,52 @@
+---
+title: "Filter Rules"
+sidebarTitle: "Filter Rules"
+description: "Exclude requests from Subtrace logs using simple filters"
+icon: "filter"
+---
+
+Subtrace tracks all requests by default, but you can exclude certain requests
+with a simple YAML-based config file. Here's an example:
+
+```yaml
+rules:
+  - if: response.status >= 400
+    then: include
+  - if: request.url == "/health"
+    then: exclude
+  - if: request.method == "HEAD"
+    then: exclude
+```
+
+To use a config file, set the `--config` command line flag when starting
+Subtrace:
+
+```bash
+subtrace run --config=/path/to/subtrace.yaml -- node app.js
+```
+
+You can also pass this as an environment variable:
+
+```bash
+export SUBTRACE_CONFIG=/path/to/subtrace.yaml
+```
+
+At request time, Subtrace will evaluate all rules in order until a matching
+rule is found. Using the first matching rule's `then` field, Subtrace decides
+whether the request should be included or excluded. If no matching rule is
+found, the request is included by default.
+
+## Syntax
+
+The `if` condition is written using [CEL](https://cel.dev), a simple language
+with a syntax similar to JavaScript. Here's a list of commonly used syntax as
+reference examples:
+
+- `request.method == "POST"`
+- `request.url != "/robots.txt"`
+- `request.url.contains("dashboard")`
+- `request.url.startsWith("/api/")`
+- `request.url.endsWith(".jpg") || request.url.endsWith(".png")`
+- `response.status >= 400 && response.status <= 499`
+
+You can find the complete CEL language definition [here](https://github.com/google/cel-spec/blob/master/doc/langdef.md).

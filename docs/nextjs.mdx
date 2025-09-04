@@ -1,0 +1,32 @@
+---
+title: "Next.js"
+sidebarTitle: "Next.js"
+description: "Connect your Next.js backend to Chrome DevTools using Subtrace"
+icon: "node-js"
+---
+
+For this guide, we'll use a minimal Next.js app as an example, but any Next.js app should work fine.
+You can find the complete source code used in this demo [here](https://github.com/subtrace/nextjs-demo).
+
+To get started, download the latest version of Subtrace using the following command:
+
+```bash
+curl -fsSL https://subtrace.dev/install.sh | sh
+```
+
+Then get a `SUBTRACE_TOKEN` from the Subtrace [dashboard](https://subtrace.dev/dashboard)
+for free and set it as an environment variable.
+
+```bash
+# get a tracer token for free at https://subtrace.dev/dashboard
+export SUBTRACE_TOKEN=
+```
+
+Build and start your server using Subtrace:
+
+```bash
+npm install
+subtrace run -- npm run dev
+```
+
+That's it! You can now visit [localhost:3000](localhost:3000) to see them automatically appear in the Subtrace [dashboard](https://subtrace.dev/dashboard) in realtime.

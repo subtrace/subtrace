@@ -1,0 +1,123 @@
+---
+title: "macOS support"
+sidebarTitle: "macOS"
+description: "Use Subtrace in your macOS development environment"
+icon: "apple"
+---
+
+Subtrace has experimental support for developers on macOS.
+
+<Steps>
+  <Step title="Start backend">
+    Start your backend server on port 8000:
+
+    <CodeGroup>
+      ```bash Node.js
+      npm run dev
+      ```
+
+      ```bash Python
+      python main.py
+      ```
+
+      ```bash Go
+      go run .
+      ```
+
+      ```bash Ruby
+      rails server -p 8000
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start Subtrace">
+    In a second terminal window, install Subtrace and start the proxy:
+
+    ```bash
+    curl -fsSL https://subtrace.dev/install.sh | sh
+
+    # starts listening on 9000 and proxies requests to 8000
+    subtrace proxy 9000:8000
+    ```
+
+    <Expandable title="example output">
+      <img className="rounded-xl" src="/images/macos-link.png" />
+    </Expandable>
+  </Step>
+
+  <Step title="Update frontend">
+    Configure your frontend to send all backend requests to localhost:9000 instead:
+
+    <CodeGroup>
+      ```javascript React
+      const API_URL = 'http://localhost:8000' // [!code --]
+      const API_URL = 'http://localhost:9000' // [!code ++]
+      
+      fetch(`${API_URL}/api/users`)
+        .then(res => res.json())
+        .then(data => setUsers(data))
+      ```
+
+      ```javascript Next.js
+      const API_URL = 'http://localhost:8000' // [!code --]
+      const API_URL = 'http://localhost:9000' // [!code ++]
+      
+      export async function getServerSideProps() {
+        const res = await fetch(`${API_URL}/api/data`)
+        const data = await res.json()
+        return { props: { data } }
+      }
+      ```
+
+      ```javascript Vue
+      const API_URL = 'http://localhost:8000' // [!code --]
+      const API_URL = 'http://localhost:9000' // [!code ++]
+      
+      axios.get(`${API_URL}/api/items`)
+        .then(response => {
+          this.items = response.data
+        })
+      ```
+
+      ```javascript Angular
+      private apiUrl = 'http://localhost:8000'; // [!code --]
+      private apiUrl = 'http://localhost:9000'; // [!code ++]
+      
+      getProducts(): Observable<Product[]> {
+        return this.http.get<Product[]>(`${this.apiUrl}/api/products`);
+      }
+      ```
+
+      ```javascript Vite
+      // vite.config.js
+      export default {
+        server: {
+          proxy: {
+            '/api': 'http://localhost:8000' // [!code --]
+            '/api': 'http://localhost:9000' // [!code ++]
+          }
+        }
+      }
+      ```
+
+      ```javascript Webpack
+      // webpack.config.js
+      module.exports = {
+        devServer: {
+          proxy: {
+            '/api': 'http://localhost:8000' // [!code --]
+            '/api': 'http://localhost:9000' // [!code ++]
+          }
+        }
+      }
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="See requests">
+    Open the `subt.link` URL in your browser to watch every request happening
+    in realtime:
+
+    <img className="rounded-xl" src="/images/quickstart-screenshot.png" />
+  </Step>
+</Steps>

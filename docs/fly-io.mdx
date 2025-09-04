@@ -1,0 +1,77 @@
+---
+title: "Fly.io"
+sidebarTitle: "Fly.io"
+description: "Integrate your app with Subtrace on Fly.io"
+icon: "fly"
+---
+
+If you're deploying your app on Fly.io, you can add Subtrace in just a couple of steps.
+Depending on the kind of [Fly builder](https://fly.io/docs/reference/builders) you're using,
+the instructions are different.
+
+We'll use a Python Uvicorn server as an example, but you can do this with any language and framework.
+
+<Tabs>
+  <Tab title="Dockerfile">
+    Make the following changes to your app's Dockerfile:
+
+    ```diff
+    - CMD ["uvicorn", "main:app", "--host", "0.0.0.0"]
+    + RUN curl -fsSLO "https://subtrace.dev/download/latest/$(uname -s)/$(uname -m)/subtrace" && chmod +x ./subtrace
+    + CMD ["./subtrace", "run", "--", "uvicorn", "main:app", "--host", "0.0.0.0"]
+
+    ```
+
+    Get a `SUBTRACE_TOKEN` from the **Tokens** page on the [dashboard](https://subtrace.dev/dashboard)
+    and set it as a Fly.io secret:
+
+    ```
+    fly secrets set SUBTRACE_TOKEN=subt_...
+    ```
+
+    Deploy your app as you normally would:
+
+    ```
+    fly deploy
+    ```
+
+    That's it! You can now visit your app and make some requests to see them automatically appear in the Subtrace
+    dashboard.
+
+  </Tab>
+  <Tab title="Buildpacks">
+
+    If you have a custom buildpack, add this line to its `bin/build` file to download Subtrace:
+
+    ```bash
+    curl -fSLO "https://subtrace.dev/download/$(uname -s)/$(uname -m)/subtrace" && chmod +x ./subtrace
+    ```
+
+    Change the command(s) in your `fly.toml` file to use Subtrace:
+
+    ```diff
+    # fly.toml
+
+    [processes]
+    -   web = "uvicorn main:app --host 0.0.0.0"
+    +   web = "./subtrace run -- uvicorn main:app --host 0.0.0.0"
+    ```
+
+    Get a `SUBTRACE_TOKEN` from the **Tokens** page on the [dashboard](https://subtrace.dev/dashboard)
+    and set it as a Fly.io secret:
+
+    ```
+    fly secrets set SUBTRACE_TOKEN=subt_...
+    ```
+
+    Deploy your app as you normally would:
+
+    ```
+    fly deploy
+    ```
+
+    That's it! You can visit your app and make some requests to see them automatically appear in the Subtrace
+    dashboard.
+
+  </Tab>
+</Tabs>

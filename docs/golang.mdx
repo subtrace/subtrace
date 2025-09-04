@@ -1,0 +1,66 @@
+---
+title: "Go + Subtrace"
+sidebarTitle: "Go"
+description: "Connect your Go backend to Chrome DevTools using Subtrace"
+icon: "golang"
+---
+
+You can connect your Go backend to Chrome DevTools using Subtrace so that you
+can can inspect the status, headers, payload, and latency of all requests. It
+takes just one command to integrate Subtrace.
+
+For this guide, we'll use the following Go app as an example:
+
+```go
+package main
+
+import (
+  "fmt"
+  "net/http"
+)
+
+type server struct{}
+
+func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+  w.WriteHeader(http.StatusOK)
+  fmt.Fprintf(w, "hello from golang!\n")
+}
+
+func main() {
+  fmt.Printf("listening on port 8080...\n")
+  if err := http.ListenAndServe(":8080", new(server)); err != nil {
+    panic(err)
+  }
+}
+```
+
+First, download the latest version of Subtrace using the following command:
+
+```bash
+curl -fsSL https://subtrace.dev/install.sh | sh
+```
+
+And get a `SUBTRACE_TOKEN` from the Subtrace [dashboard](https://subtrace.dev/dashboard)
+for free to set it as an environment variable.
+
+```bash
+# get a tracer token for free at https://subtrace.dev/dashboard
+export SUBTRACE_TOKEN=
+```
+
+Build the `main` binary using the following commands:
+
+```
+go mod init
+go mod tidy
+go build -o main main.go
+```
+
+And start your server using Subtrace:
+
+```
+subtrace run -- ./main
+```
+
+Send some requests to `localhost:8080` to see them automatically appear in
+Chrome DevTools in the Subtrace dashboard!

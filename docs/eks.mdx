@@ -1,0 +1,91 @@
+---
+title: "Using Subtrace on Elastic Kubernetes Service (EKS)"
+sidebarTitle: "Elastic Kubernetes Service"
+description: "Monitor network requests in your EKS cluster using Subtrace."
+icon: "aws"
+---
+
+If you're using AWS EKS to deploy your app, Subtrace is a great way to monitor your network requests in realtime.
+
+<Note>
+  Subtrace requires Linux kernel version 5.14 or newer. Some AMIs like Amazon Linux 2 use an older version of the
+  kernel. If your nodes run one of these images, you'll need to upgrade nodes running Subtrace to a newer image like
+  Amazon Linux 2023.
+  <Accordion title="How do I check what image/kernel version I'm using?">
+    1. Navigate to your cluster in AWS.
+    
+    2. Under the **Compute** tab, you'll see your cluster's nodes.
+    ![Cluster nodes](/images/eks/node-list.png)
+
+    3. Click on the node you're interested in to see the kernel version and the image:
+    ![Node info](/images/eks/node-info.png)
+
+  </Accordion>
+</Note>
+
+1. Add Subtrace to your container by making this change to your Dockerfile:
+
+```diff
+- CMD ["node", "./app.js"]
++ RUN curl -fsSL https://subtrace.dev/install.sh | sh
++ CMD ["subtrace", "run", "--", "node", "./app.js"]
+```
+
+2. Build and push your Docker image as usual.
+
+3. Update your Kubernetes pod spec to point to the new image. Here is an example `deployment.yaml` file:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: node-app
+  template:
+    metadata:
+      labels:
+        app: node-app
+    spec:
+      containers:
+        - name: node-app
+          image: USERID.dkr.ecr.REGION.amazonaws.com/node-app:v2
+          ports:
+            - containerPort: 3000
+          env:
+            - name: SUBTRACE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: env-secrets
+                  key: SUBTRACE_TOKEN
+          securityContext:
+            capabilities:
+              add: ["SYS_PTRACE"]
+```
+
+<Tip>
+  Make sure the container has the `SUBTRACE_TOKEN` environment variable in your deployment YAML. Typically, this is done
+  with a [Kubernetes secret](https://kubernetes.io/docs/concepts/configuration/secret/), but if you're using an external
+  secret manager, consult its documentation. If you don't have a Subtrace token yet, go to the **Tokens** page on the
+  [dashboard](https://subtrace.dev/dashboard) and create a tracer token.
+</Tip>
+
+<Tip>
+  Don't forget to set the `securityContext` field in the container spec. Subtrace needs the `SYS_PTRACE` capability in
+  order to trace your app's requests.
+</Tip>
+
+4. Apply your changes to the EKS cluster. You can do this using the AWS CLI:
+
+```bash
+aws eks update-kubeconfig --name my-cluster --region cluster-region
+kubectl apply -f deployment.yaml
+```
+
+You can verify that your deployments are healthy in the **Overview** tab for your cluster in AWS:
+![Cluster overview](/images/eks/healthy-deployments.png)
+
+And that's it! You should now be able to see your pod's HTTP requests on the Subtrace dashboard.

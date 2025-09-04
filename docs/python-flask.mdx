@@ -1,0 +1,49 @@
+---
+title: "Python Flask + Subtrace"
+sidebarTitle: "Flask"
+description: "Connect your Flask backend to Chrome DevTools using Subtrace"
+icon: "python"
+---
+
+You can connect your Flask backend to Chrome DevTools using Subtrace with just
+one line of code. With Subtrace, you can inspect the status, headers, payload,
+and latency of all API requests so you can debug way faster.
+
+To begin with, install Subtrace:
+
+```python
+pip install subtrace
+```
+
+For this guide, we'll use the following `hello.py` Flask app as an example:
+
+```python
+# Add this line to install Subtrace on your Flask server
+import subtrace
+
+from flask import Flask                                                                                             
+
+app = Flask(__name__)
+                         
+@app.route("/")          
+def hello_world():
+    return "<p>Hello, World!</p>"
+```
+
+Before we move on to the next step, get a `SUBTRACE_TOKEN` from the Subtrace
+[dashboard](https://subtrace.dev/dashboard) for free and set it as an
+environment variable.
+
+```bash
+# get a tracer token for free at https://subtrace.dev/dashboard
+export SUBTRACE_TOKEN=
+```
+
+Now use the `flask` command to start the server on port 5000:
+
+```bash
+flask --app hello run
+```
+
+Send some requests to `localhost:5000` to see them in Chrome DevTools in the
+Subtrace dashboard!

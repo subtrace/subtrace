@@ -1,0 +1,122 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Subtrace",
+  "colors": {
+    "primary": "#0369a1",
+    "light": "#0369a1",
+    "dark": "#0369a1"
+  },
+  "favicon": "/images/favicon.svg",
+  "navigation": {
+    "anchors": [
+      {
+        "anchor": "Documentation",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "quickstart",
+              "dashboard"
+            ]
+          },
+          {
+            "group": "Platforms",
+            "pages": [
+              "docker",
+              "docker-compose",
+              "kubernetes",
+              "ecs",
+              "eks",
+              "vercel-next",
+              "fly-io",
+              "porter"
+            ]
+          },
+          {
+            "group": "Language guides",
+            "pages": [
+              "nodejs-express",
+              "nextjs",
+              "sveltekit",
+              "python-fastapi",
+              "python-gunicorn",
+              "python-flask",
+              "golang",
+              "php-laravel",
+              "macos"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "rules",
+              "tags",
+              "credentials"
+            ]
+          },
+          {
+            "group": "Tutorials",
+            "pages": [
+              "using-the-dashboard"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "benchmarks"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Dashboard",
+          "href": "https://subtrace.dev/dashboard",
+          "icon": "table"
+        },
+        {
+          "anchor": "Documentation",
+          "href": "https://docs.subtrace.dev",
+          "icon": "book-open-cover"
+        },
+        {
+          "anchor": "Discord",
+          "href": "https://subtrace.dev/discord",
+          "icon": "discord"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/images/logo_text_black.svg",
+    "dark": "/images/logo_text_white.svg",
+    "href": "https://subtrace.dev"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Support",
+        "href": "mailto:support@subtrace.dev"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Dashboard",
+      "href": "https://subtrace.dev/dashboard"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/subtrace"
+    }
+  },
+  "integrations": {
+    "posthog": {
+      "apiKey": "phc_SXVdOsEGSK2VVBbSC3SYMJTIZeD6T5qiTtJdVg4c55X"
+    }
+  }
+}

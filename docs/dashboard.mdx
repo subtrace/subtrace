@@ -1,0 +1,63 @@
+---
+title: "Dashboard"
+sidebarTitle: "Dashboard"
+description: "See your app's requests on the Subtrace dashboard"
+icon: "table-layout"
+---
+
+<Note>
+  This guide assumes that your app is deployed on a Linux machine. If your app
+  is running on macOS, see [here](/macos).
+</Note>
+
+Here's what you'll see when you log in to the Subtrace
+[dashboard](https://subtrace.dev/dashboard) for the first time:
+
+<img className="rounded-xl" src="/images/onboarding-main.png" />
+
+Choose the backend that you're using and follow the instructions to start your
+app with Subtrace.
+
+<img
+  className="rounded-xl max-w-1/2"
+  style={{ maxWidth: "50%", justifySelf: "center" }}
+  src="/images/onboarding-steps.png"
+/>
+
+Subtrace automatically detects when you've started your app:
+
+<img
+  className="rounded-xl max-w-1/2"
+  style={{ maxWidth: "50%", justifySelf: "center" }}
+  src="/images/onboarding-done.png"
+/>
+
+And that's it! You can hit "Finish", and send some requests to your app to see them
+show up in realtime.
+
+<AccordionGroup>
+  <Accordion title="My backend isn't listed here, can I still use Subtrace?">
+    Absolutely! Subtrace supports every language and framework out of the box.
+    You can select "Other" as your tech stack in the setup for generic
+    instructions on how to use Subtrace with any backend.
+  </Accordion>
+
+  <Accordion title={`What happens if I choose "I'll do this later"?`}>
+    You can still set up your app with Subtrace. Check our guides for your
+    specific backend.
+
+    If you'd like to see the setup instructions again, simply refresh the page.
+
+  </Accordion>
+  <Accordion title="What if Subtrace doesn't detect my app?">
+    Verify that:
+    - Your app is running with `subtrace run -- my-app`
+    - The `SUBTRACE_TOKEN` env var is set (check with `echo $SUBTRACE_TOKEN`)
+    - Your app is running on a Linux machine. If you're using macOS, see [here](/macos)
+
+    If these don't solve your issue, reach out to support@subtrace.dev.
+    We're happy to help!
+
+  </Accordion>
+
+</AccordionGroup>

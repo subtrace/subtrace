@@ -1,0 +1,19 @@
+Diff
+
+Show a visual diff of added or removed lines in your code blocks. Added lines are highlighted in green and removed lines are highlighted in red.
+To create diffs, add these special comments at the end of lines in your code block:
+// [!code ++]: Mark a line as added (green highlight).
+// [!code --]: Mark a line as removed (red highlight).
+For multiple consecutive lines, specify the number of lines after a colon:
+// [!code ++:3]: Mark the current line plus the next two lines as added.
+// [!code --:5]: Mark the current line plus the next four lines as removed.
+The comment syntax must match your programming language (for example, // for JavaScript or # for Python).
+
+```js Diff Example icon="code" lines
+const greeting = "Hello, World!"; // [!code ++]
+function sayHello() {
+  console.log("Hello, World!"); // [!code --]
+  console.log(greeting); // [!code ++]
+}
+sayHello();
+```

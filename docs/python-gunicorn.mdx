@@ -1,0 +1,45 @@
+---
+title: "Gunicorn + Subtrace"
+sidebarTitle: "Gunicorn"
+description: "Connect your Gunicorn backend to Chrome DevTools using Subtrace"
+icon: "python"
+---
+
+You can connect your Gunicorn backend to Chrome DevTools using Subtrace with
+just one command. With Subtrace, you can inspect the status, headers, payload,
+and latency of all API requests so you can debug way faster.
+
+For this guide, we'll use the following Gunicorn app as an example:
+
+```python
+# myapp.py
+def app(environ, start_response):
+    data = b"Hello, World!\n"
+    start_response("200 OK", [
+        ("Content-Type", "text/plain"),
+        ("Content-Length", str(len(data)))
+    ])
+    return iter([data])
+```
+
+To start, download the latest version of Subtrace:
+
+```bash
+curl -fsSL https://subtrace.dev/install.sh | sh
+```
+
+Get a `SUBTRACE_TOKEN` from the Subtrace [dashboard](https://subtrace.dev/dashboard)
+for free to set it as an environment variable.
+
+```bash
+# get a tracer token for free at https://subtrace.dev/dashboard
+export SUBTRACE_TOKEN=
+```
+
+To start your server on port 8000, run the following command:
+
+```bash
+subtrace run -- gunicorn -w 4 myapp:app
+```
+
+Send a request to `localhost:8000` to see it in the Subtrace dashboard!
