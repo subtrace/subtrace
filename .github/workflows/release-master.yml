@@ -90,24 +90,6 @@ jobs:
         make publish
         cd ../..
 
-        echo "building nextjs package"
-        cd ./etc/subtrace-next
-        curr=$(npm pkg get version | tr --delete '"')
-        latest=$(npm view subtrace-next version)
-        dirty=$(git diff --quiet --exit-code HEAD^ HEAD .; echo $?)
-        if [ "$curr" != "$latest" ]; then
-          for f in *; do sha256sum $f 2>/dev/null || true; done
-          npm install
-          make build pack
-          sha256sum *.tgz
-          rm *.tgz
-          npm set //registry.npmjs.org/:_authToken=${{ secrets.SUBTRACE_NPM_PUBLISH_TOKEN }}
-        elif [ "$dirty" -ne 0 ]; then
-          echo "⚠️ Changes made to the subtrace-next package but version not updated in package.json." >&2
-          echo "⚠️ A new version will not be published." >&2
-        fi
-        cd ../..
-
   worker-docker:
     runs-on: ubuntu-24.04
     steps:
@@ -132,3 +114,26 @@ jobs:
             --platform linux/amd64,linux/arm64 \
             --tag ghcr.io/subtrace/worker:${version} \
             --tag ghcr.io/subtrace/worker:latest
+
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: deploy
+      run: |
+        set -e
+        echo "$(date -Ru): starting"
+        id=$(curl -s -X POST -H "Authorization: Bearer ${{ secrets.MINTLIFY_API_KEY }}" "https://api.mintlify.com/v1/project/update/66aab01f638881ee8eec5634" | jq -r .statusId)
+        echo "$(date -Ru): deployment=${id}"
+        for dur in 1 5; do
+          for idx in $(seq 1 20); do
+            sleep $dur
+            status=$(curl -s -H "Authorization: Bearer ${{ secrets.MINTLIFY_API_KEY }}" "https://api.mintlify.com/v1/project/update-status/${id}" | jq -r '.status')
+            echo "$(date -Ru): status=${status}"
+            if [[ "${status}" == "success" ]]; then
+              exit
+            fi
+          done
+        done
