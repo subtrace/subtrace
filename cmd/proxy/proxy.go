@@ -73,7 +73,7 @@ func ExtraHelp() string {
 		"  subtrace proxy 9000:8000",
 		"",
 		"MORE",
-		"  https://docs.subtrace.dev",
+		"  https://subtrace.dev/docs",
 		"  https://subtrace.dev/discord",
 		"",
 	}, "\n")
