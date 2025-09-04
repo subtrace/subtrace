@@ -54,7 +54,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "The `subtrace run` command is currently not supported on macOS.\n")
 		fmt.Fprintf(os.Stderr, "You can use the `subtrace proxy` command instead.\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "See https://docs.subtrace.dev/macos for more details.\n")
+		fmt.Fprintf(os.Stderr, "See https://subtrace.dev/docs/macos for more details.\n")
 		return
 	}
 

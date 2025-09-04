@@ -22,9 +22,9 @@ curl -fsSL https://subtrace.dev/install.sh | sh
 
 ### Guides
 
-- [Docker](https://docs.subtrace.dev/docker)
-- [Docker Compose](https://docs.subtrace.dev/docker-compose)
-- [Kubernetes](https://docs.subtrace.dev/kubernetes)
+- [Docker](https://subtrace.dev/docs/docker)
+- [Docker Compose](https://subtrace.dev/docs/docker-compose)
+- [Kubernetes](https://subtrace.dev/docs/kubernetes)
 
 ### Quickstart
 

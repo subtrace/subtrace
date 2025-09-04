@@ -30,7 +30,7 @@ setup(
     ],
 
     project_urls={
-        "Docs": "https://docs.subtrace.dev",
+        "Docs": "https://subtrace.dev/docs",
         "Github": "https://github.com/subtrace/subtrace",
     },
 )
