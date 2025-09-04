@@ -1,0 +1,33 @@
+---
+title: "PHP Laravel + Subtrace"
+sidebarTitle: "Laravel"
+description: "Connect your Laravel backend to Chrome DevTools using Subtrace"
+icon: "php"
+---
+
+You can connect your Laravel backend to Chrome DevTools using Subtrace with
+just one command. With Subtrace, you can inspect the status, headers, payload,
+and latency of all API requests, which makes you way faster at debugging.
+
+Download the latest version of Subtrace using the following command:
+
+```bash
+curl -fsSL https://subtrace.dev/install.sh | sh
+```
+
+Then get a `SUBTRACE_TOKEN` from the Subtrace [dashboard](https://subtrace.dev/dashboard)
+for free and set it as an environment variable.
+
+```bash
+# get a tracer token for free at https://subtrace.dev/dashboard
+export SUBTRACE_TOKEN=
+```
+
+Then start your Laravel server using Subtrace:
+
+```
+subtrace run -- php artisan serve
+```
+
+Send some requests to your Laravel server to see them automatically appear in
+Chrome DevTools in the Subtrace dashboard!

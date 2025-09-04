@@ -1,0 +1,70 @@
+---
+title: "Porter"
+sidebarTitle: "Porter"
+description: "Integrate your app with Subtrace on Porter"
+icon: "square"
+iconType: "solid"
+# TODO find better icon
+---
+
+If you're using [Porter Cloud](https://cloud.porter.run) to manage your deployments,
+you can easily integrate with Subtrace to monitor your app's network requests. Depending
+on how you build your app on Porter, the instructions are different.
+
+We'll use a Next.js app as an example, but you can do this with any language and framework.
+
+<Tabs>
+  <Tab title="Dockerfile">
+    Make the following changes to your app's Dockerfile:
+
+    ```diff
+    - CMD ["npm", "run", "start"]
+    + RUN curl -fsSLO "https://subtrace.dev/download/latest/$(uname -s)/$(uname -m)/subtrace" && chmod +x ./subtrace
+    + CMD ["./subtrace", "run", "--", "npm", "run", "start"]
+
+    ```
+
+    Get a `SUBTRACE_TOKEN` from the **Tokens** page on the [dashboard](https://subtrace.dev/dashboard)
+    and set it as an environment secret on Porter:
+
+    <img className="rounded-xl" src="/images/porter-secret.png" />
+
+    <Note>Click the lock icon on the right to make it a secret.</Note>
+
+    And then deploy your app as you normally would.
+
+    That's it! You can now visit your app and make some requests to see them automatically appear in the Subtrace
+    dashboard.
+
+  </Tab>
+  <Tab title="Buildpacks">
+
+    If you're using Buildpacks, the easiest way to integrate Subtrace would be to just change the command
+    that's used to start your app on Porter.
+
+    Create a file called `start.sh` in your repo root that downloads Subtrace and starts your app:
+
+    ```bash
+    #!/usr/bin/env bash
+    curl -fSLO "https://subtrace.dev/download/$(uname -s)/$(uname -m)/subtrace" && chmod +x ./subtrace
+    ./subtrace run -- npm run start # replace with your app command
+    ```
+
+    Change your app's start command on Porter to run this script:
+
+    <img className="rounded-xl" src="/images/porter-start-command.png" />
+
+    Get a `SUBTRACE_TOKEN` from the **Tokens** page on the [dashboard](https://subtrace.dev/dashboard)
+    and set it as an environment secret on Porter:
+
+    <img className="rounded-xl" src="/images/porter-secret.png" />
+
+    <Note>Click the lock icon on the right to make it a secret.</Note>
+
+    And then deploy your app as you normally would.
+
+    That's it! You can now visit your app and make some requests to see them automatically appear in the Subtrace
+    dashboard.
+
+  </Tab>
+</Tabs>

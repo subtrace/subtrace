@@ -1,0 +1,45 @@
+---
+title: "Using Subtrace with Docker"
+sidebarTitle: "Docker"
+description: "Track requests in your Dockerized app with Subtrace."
+icon: "docker"
+---
+
+If your app runs in a Docker container, you can use Subtrace to monitor all its
+requests. Here's how you can get started:
+
+<Steps>
+<Step>
+Make the following change to your `Dockerfile` to install and use Subtrace
+in your app's Docker image:
+
+```diff
+- CMD ["node", "./app.js"]
++ RUN curl -fsSL https://subtrace.dev/install.sh | sh
++ CMD ["subtrace", "run", "--", "node", "./app.js"]
+```
+
+</Step>
+
+<Step>
+Run your Docker container as you normally would, but add `--cap-add=SYS_PTRACE`:
+
+```diff
+- docker run -t -p 3000:3000 node-app
++ docker run -t -p 3000:3000 --cap-add=SYS_PTRACE node-app
+```
+
+<Expandable title="example output">
+  <img className="rounded-xl" src="/images/docker-link.png" />
+</Expandable>
+
+</Step>
+
+<Step>
+That's it! Open the `subt.link` URL in your browser to see your app's requests
+show up in real time:
+
+<img className="rounded-xl" src="/images/subt-link-example.png" />
+
+</Step>
+</Steps>

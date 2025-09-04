@@ -1,0 +1,50 @@
+---
+title: "NodeJS + Express + Subtrace"
+sidebarTitle: "Express.js"
+description: "Connect your NodeJS + Express backend to Chrome DevTools using Subtrace"
+icon: "node-js"
+---
+
+You can connect your NodeJS backend to Chrome DevTools using Subtrace so that
+you can can inspect the status, headers, payload, and latency of all requests.
+It takes just one command to integrate Subtrace.
+
+For this guide, we'll use the following NodeJS + Express app as an example:
+
+```js
+// app.js
+const express = require('express');
+const app = express();
+const port = 3000;
+
+app.get('/', (req, res) => {
+  res.send('Hello World!')
+});
+
+app.listen(port, () => {
+  console.log(`listening on port ${port}`)
+});
+```
+
+Download the latest version of Subtrace using the following command:
+
+```bash
+curl -fsSL https://subtrace.dev/install.sh | sh
+```
+
+And get a `SUBTRACE_TOKEN` from the Subtrace [dashboard](https://subtrace.dev/dashboard)
+for free to set it as an environment variable.
+
+```bash
+# get a tracer token for free at https://subtrace.dev/dashboard
+export SUBTRACE_TOKEN=
+```
+
+Start your server using Subtrace with the following command:
+
+```
+subtrace run -- node app.js
+```
+
+Send some requests to `localhost:3000` to see them automatically appear in
+Chrome DevTools in the Subtrace dashboard!

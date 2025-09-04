@@ -1,0 +1,29 @@
+---
+title: "Subtrace Benchmarks"
+sidebarTitle: "Benchmarks"
+description: "Latency and throughput overhead benchmarks"
+icon: "stopwatch"
+---
+
+Subtrace is incredibly lightweight and adds negligible overhead to the latency
+of your backend requests. Even under extreme load, it adds less than 1
+millisecond in latency; under typical loads, you can expect less than 0.1ms
+in added latency. For reference, the latency between machines within the *same*
+datacenter is usually [4-10 milliseconds](https://www.cloudping.co/grid).
+
+We periodically and publish measure the following latency and throughput impact
+of Subtrace in the next two graphs. These benchmarks were performed on a AWS
+`m5a.4xlarge` machine with 16 vCPUs and 64 GiB memory. Both the client and
+server were on the same machine in order to eliminate network noise. In each
+benchmark, 16 parallel clients continuously sent requests to a server running
+running under Subtrace for 10 seconds.
+
+<img className="rounded-xl" src="/images/latency-size.png" />
+
+<img className="rounded-xl" src="/images/throughput-size.png" />
+
+While these benchmarks don't represent all types of workloads, they should give
+you a sense of what to expect from integrating Subtrace. We encourage everyone
+to measure the impact of Subtrace on their own app. If these numbers aren't
+aligned with your observations, [let us know](mailto:support@subtrace.dev) and
+we'll investigate. We care about performance deeply.

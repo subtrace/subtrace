@@ -1,0 +1,61 @@
+---
+title: "Use Subtrace on Vercel+Next.js"
+sidebarTitle: "Vercel + Next.js"
+description: "Monitor network requests in your Next.js app using Subtrace."
+icon: "triangle"
+---
+
+<Note>
+  Support for Vercel is experimental. We strongly recommend testing it out in your [preview
+  environment](https://vercel.com/docs/deployments/environments#preview-environment-pre-production) first.
+</Note>
+
+1. Add the `subtrace-next` package to your app:
+
+```bash
+npm install subtrace-next
+```
+
+2. Import the package at the top-level:
+
+```TypeScript
+// top level file, usually layout.tsx
+import "subtrace-next";
+```
+
+This will automatically trace all the **outgoing requests** in your Next.js app.
+
+3. Add instrumentation to trace **incoming requests**. In your route.ts files, wrap your route handlers with the `trace` function:
+
+```TypeScript
+// app/api/foo/route.ts
+import { NextRequest, NextResponse } from "next/server";
+
+import { trace } from "subtrace-next";
+
+export const GET = trace((request: NextRequest) => {
+  const { searchParams } = new URL(request.url);
+  const name = searchParams.get("name") || "World";
+
+  const responseData = {
+    message: `Hello ${name}!`,
+    method: "GET",
+    timestamp: new Date().toISOString(),
+    query: Object.fromEntries(searchParams.entries()),
+  };
+
+  return NextResponse.json(responseData);
+});
+```
+
+4. Add the `SUBTRACE_TOKEN` environment variable to your preview/production environments on Vercel:
+
+![Environment variable](/images/vercel-env-var.png)
+
+<Tip>Mark this as a sensitive environment variable.</Tip>
+
+If you don't have a Subtrace token, you can get one on the **Tokens** page of the [dashboard](https://subtrace.dev/dashboard).
+
+5. Deploy your app as you normally would (eg: with `vercel deploy`)
+
+And that's it! You can see a realtime stream of your app's requests on the Subtrace dashboard.
