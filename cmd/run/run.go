@@ -108,7 +108,7 @@ func ExtraHelp() string {
 		"  $ subtrace run -- curl https://subtrace.dev",
 		"",
 		"MORE",
-		"  https://docs.subtrace.dev",
+		"  https://subtrace.dev/docs",
 		"  https://subtrace.dev/discord",
 		"",
 	}, "\n")
@@ -380,7 +380,7 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		fmt.Fprintf(os.Stderr, "If you're using Docker, please add the --cap-add=SYS_PTRACE flag to\n")
 		fmt.Fprintf(os.Stderr, "your `docker run` command when you start the container to fix this.\n")
 		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "See https://docs.subtrace.dev/ptrace for more details.\n")
+		fmt.Fprintf(os.Stderr, "See https://subtrace.dev/docs/ptrace for more details.\n")
 		return 1, nil
 	} else if err != nil {
 		return 0, fmt.Errorf("exec child: %w", err)
