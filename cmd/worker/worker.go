@@ -299,7 +299,7 @@ func (c *Command) newTunnelConn(ctx context.Context, tunnelID uuid.UUID, endpoin
 		return nil, err
 	}
 
-	conn.SetReadLimit(64 << 20)
+	conn.SetReadLimit(-1)
 
 	tc.websocket = conn
 	return tc, nil
