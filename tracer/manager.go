@@ -173,7 +173,7 @@ func (b *block) flushOnce(ctx context.Context) error {
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
 	if _, err := doInsert(ctx, conn, b.events); err != nil {
-		return fmt.Errorf("insert %d events (%d bytes): %w", b.count.Load(), b.bytes.Load(), err)
+		return fmt.Errorf("insert %d events (%d bytes): tunnel %s: %w", b.count.Load(), b.bytes.Load(), tunnelID, err)
 	}
 
 	b.flushed = true
