@@ -176,16 +176,14 @@ func (p *proxy) start() {
 	}
 }
 
-var isHTTP2Enabled = false
+var isHTTP2Enabled = true
 var isWebsocketEnabled = false
 var websocketTimeLimit time.Duration = 110 * time.Second
 
 func Init() error {
-	for _, name := range []string{"SUBTRACE_HTTP2", "SUBTRACE_GRPC"} {
-		switch strings.ToLower(os.Getenv(name)) {
-		case "1", "y", "yes", "t", "true":
-			isHTTP2Enabled = true
-		}
+	switch strings.ToLower(os.Getenv("SUBTRACE_HTTP2")) {
+	case "0", "f", "false", "n", "no":
+		isHTTP2Enabled = false
 	}
 
 	switch strings.ToLower(os.Getenv("SUBTRACE_WEBSOCKET")) {
