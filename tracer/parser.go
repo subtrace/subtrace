@@ -155,7 +155,8 @@ func jsonify(mime string, buf []byte) ([]byte, bool) {
 	switch mime {
 	case "application/grpc":
 		switch strings.ToLower(os.Getenv("SUBTRACE_GRPC")) {
-		case "1", "y", "yes", "t", "true":
+		case "0", "n", "no", "f", "false":
+		default:
 			var arr []map[string]any
 			for len(buf) > 0 {
 				if len(buf) < 5 {
