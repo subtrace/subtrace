@@ -6,7 +6,7 @@
 
 # Subtrace
 
-See backend network requests without any extra code.
+Inspect HTTP requests in any server with just a single command.
 
 ### Linux
 
@@ -14,10 +14,15 @@ See backend network requests without any extra code.
 curl -fsSL https://subtrace.dev/install.sh | sh
 ```
 
+### macOS
+
+Currently in private beta. [Join the waitlist](https://mac.subtrace.dev) if you primarily use macOS for development!
+
 ##
 
-### Community
+### Resources
 
+- [Docs](https://subtrace.dev/docs)
 - [Discord](https://subtrace.dev/discord)
 
 ### Guides
@@ -28,7 +33,7 @@ curl -fsSL https://subtrace.dev/install.sh | sh
 
 ### Quickstart
 
-```
+```bash
 # Node.js
 subtrace run -- npm run dev
 
