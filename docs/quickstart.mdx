@@ -79,11 +79,22 @@ email us at [support@subtrace.dev](support@subtrace.dev) for assistance.
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title='Error: subtrace: missing SYS_PTRACE capability'>
-    Subtrace requires the `SYS_PTRACE` Linux capability to work correctly. If you're using Subtrace inside Docker, add the `--cap-add=SYS_PTRACE` flag to your container startup command:
-    ```bash
-    docker run --cap-add=SYS_PTRACE my-docker-image:latest
-    ```
-    See [this](/docs/ptrace) for more details.
+  <Accordion title='error: subtrace: missing SYS_PTRACE capability'>
+    Add the `SYS_PTRACE` capability to your container.
+
+    <CodeGroup>
+      ```bash Docker (docker run)
+      docker run --cap-add=SYS_PTRACE ...
+      ```
+
+      ```yaml Docker Compose
+      services:
+        my-app:
+          cap_add:
+            - SYS_PTRACE
+      ```
+    </CodeGroup>
+
+    See the [full guide](/docs/ptrace) for other platforms and environments.
   </Accordion>
 </AccordionGroup>
