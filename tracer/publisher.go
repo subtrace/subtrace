@@ -151,7 +151,7 @@ func box(title string, body ...string) {
 	fmt.Fprintf(b, "%s%s%s %s %s%s%s\n", prefix, LT, strings.Repeat(HH, (width-(1+1+len(title)+1+1))/2), title, strings.Repeat(HH, (width-(1+1+len(title)+1+1))/2), RT, suffix)
 	for _, line := range lines {
 		lp, ls := "", ""
-		if term.IsTerminal(int(os.Stderr.Fd())) && strings.Contains(line, "https://") {
+		if term.IsTerminal(int(os.Stderr.Fd())) && (strings.Contains(line, "https://") || strings.Contains(line, "socat abstract-connect:")) {
 			lp, ls = "\033[0;34m", "\033[0m"
 		}
 		fmt.Fprintf(b, "%s%s%s  %s"+fmt.Sprintf("%%-%ds", width-3-3)+"%s  %s%s%s\n", prefix, VV, suffix, lp, line, ls, prefix, VV, suffix)
@@ -169,14 +169,27 @@ func (p *publisher) showURL(val string) {
 		return
 	}
 
-	box(
-		"SUBTRACE",
-		"Connected! Use this link to see your API requests:",
+	lines := []string{
+		"Open this link to see your HTTP requests:",
 		"",
-		"    "+val,
+		"    " + val,
+	}
+
+	if DefaultAbstractListener != nil {
+		lines = append(lines,
+			"",
+			"Or run this command in a different terminal:",
+			"",
+			fmt.Sprintf("    socat abstract-connect:%d.subtrace -", DefaultAbstractListener.TracerID),
+		)
+	}
+
+	lines = append(lines,
 		"",
 		"Thanks for using Subtrace, happy debugging!",
 	)
+
+	box("SUBTRACE", lines...)
 }
 
 func (p *publisher) queueWrite(b []byte) error {

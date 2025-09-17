@@ -314,6 +314,13 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		return 1, fmt.Errorf("init socket: %w", err)
 	}
 
+	if err := tracer.InitAbstractListener(ctx); err != nil {
+		slog.Debug("failed to initialize abstract listener", "err", err)
+	} else {
+		defer tracer.DefaultAbstractListener.Stop()
+		slog.Debug("initialized abstract listener", "err", err, "addr", fmt.Sprintf("@%d", tracer.DefaultAbstractListener.TracerID))
+	}
+
 	if os.Getenv("SUBTRACE_TOKEN") != "" && os.Getenv("SUBTRACE_LINK_ID_OVERRIDE") != "" {
 		slog.Debug("SUBTRACE_LINK_ID_OVERRIDE is ignored when SUBTRACE_TOKEN is set")
 	}

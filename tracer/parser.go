@@ -437,7 +437,7 @@ func (p *Parser) Finish() error {
 		}
 	}
 
-	json, err := json.Marshal(entry)
+	jsonBuf, err := json.Marshal(entry)
 	if err != nil {
 		return fmt.Errorf("encode json: %w", err)
 	}
@@ -451,13 +451,23 @@ func (p *Parser) Finish() error {
 	}
 
 	if p.global.Devtools != nil && p.global.Devtools.HijackPath != "" {
-		go p.global.Devtools.Send(json)
+		go p.global.Devtools.Send(jsonBuf)
 		return nil
 	}
 
+	if DefaultAbstractListener != nil {
+		b, err := json.Marshal(struct {
+			Tags map[string]string `json:"tags"`
+			HTTP *extendedHarEntry `json:"http"`
+		}{Tags: tags.Map(), HTTP: entry})
+		if err == nil {
+			b = append(b, '\n')
+			DefaultAbstractListener.send(b)
+		}
+	}
 	if sendReflector {
 		begin := time.Now()
-		err := p.sendReflector(tags.Map(), json, logidx, loglines)
+		err := p.sendReflector(tags.Map(), jsonBuf, logidx, loglines)
 		slog.Debug("sent event to reflector", "eventID", p.event.Get("event_id"), "err", err, "took", time.Since(begin).Round(time.Microsecond))
 		if err != nil {
 			slog.Error("failed to publish event to reflector", "eventID", p.event.Get("event_id"), "err", err)
@@ -465,7 +475,7 @@ func (p *Parser) Finish() error {
 	}
 	if sendTunneler {
 		ev := p.event.Copy()
-		ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(json))
+		ev.Set("http_har_entry", base64.RawStdEncoding.EncodeToString(jsonBuf))
 		ev.Set("har_time", fmt.Sprintf("%d", entry.Time))
 		ev.Set("har_request_method", entry.Request.Method)
 		ev.Set("har_request_url", entry.Request.URL)
