@@ -7,51 +7,72 @@ icon: "circle-exclamation"
 
 Subtrace requires the `SYS_PTRACE` Linux capability in order to work correctly.
 
-## Docker
+Expand the environment you're using to find the exact change to make.
 
-If you're using Subtrace in a Docker container using `docker run`, you can enable that by adding the `--cap-add=SYS_PTRACE` command line flag when starting your container. For example:
+<AccordionGroup>
+  <Accordion title="Docker (docker run)">
+    If you're using Subtrace in a Docker container via `docker run`, add `--cap-add=SYS_PTRACE` when starting your container. For example:
 
-```bash
-docker run -it --rm --cap-add=SYS_PTRACE debian:12
-```
+    ```bash
+    docker run -it --rm --cap-add=SYS_PTRACE debian:12
+    ```
+  </Accordion>
 
-## Docker Compose
+  <Accordion title="Docker Compose">
+    Add `cap_add: [SYS_PTRACE]` to your service in `compose.yaml`:
 
-If you're using Subtrace with Docker Compose, add the following line to your service definition in the `compose.yml` file:
-
-```yaml {5-6}
-services:
-  my-app:
-    image: ghcr.io/NAMESPACE/IMAGE_NAME:latest
-    command: "subtrace run -- ./start.sh"
-    cap_add:
-      - SYS_PTRACE
-```
-
-## Kubernetes
-
-If you're deploying on Kubernetes, add the following line to your deployment:
-
-```yaml {18-21}
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-deployment
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: my-app
-  template:
-    metadata:
-      labels:
-        app: my-app
-    spec:
-      containers:
-      - name: my-container
+    ```yaml {5-6}
+    services:
+      my-app:
         image: ghcr.io/NAMESPACE/IMAGE_NAME:latest
-        securityContext:
-          capabilities:
-            add:
-              - SYS_PTRACE
-```
+        command: "subtrace run -- ./start.sh"
+        cap_add:
+          - SYS_PTRACE
+    ```
+  </Accordion>
+
+  <Accordion title="Kubernetes (Deployments/Pods)">
+    Add the capability in the container `securityContext`:
+
+    ```yaml {18-21}
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: my-deployment
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: my-app
+      template:
+        metadata:
+          labels:
+            app: my-app
+        spec:
+          containers:
+          - name: my-container
+            image: ghcr.io/NAMESPACE/IMAGE_NAME:latest
+            securityContext:
+              capabilities:
+                add:
+                  - SYS_PTRACE
+    ```
+  </Accordion>
+
+  <Accordion title="Amazon ECS (Fargate)">
+    The ECS console UI does not expose `linuxParameters.capabilities`. Create a new task definition revision and edit the JSON to include `SYS_PTRACE`:
+
+    ```json
+    "linuxParameters": {
+      "capabilities": {
+        "add": ["SYS_PTRACE"]
+      }
+    },
+    ```
+
+    ![Open JSON editor](/images/ecs/5-task-update-button.png)
+
+    ![Highlighted JSON changes](/images/ecs/6-task-json-diff.png)
+  </Accordion>
+
+</AccordionGroup>
