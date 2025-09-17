@@ -67,6 +67,12 @@
             "pages": [
               "benchmarks"
             ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "env-vars"
+            ]
           }
         ]
       }
