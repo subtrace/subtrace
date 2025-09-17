@@ -34,42 +34,17 @@ is the easiest way to monitor the network activity in your cluster in realtime.
      ```json
      "environment": [
        {
-         "name": "SUBTRACE_ANCIENT_KERNEL",
-         "value": "1"
-       },
-       {
          "name": "SUBTRACE_TOKEN",
          "value": "subt_****************"
        }
      ]
      ```
- 
+
    As an example, here's what the task JSON should look like:
 
      ![highlighted task JSON diff](/images/ecs/6-task-json-diff.png)
 
 3. Click **Create** to create a new task revision.
-
-<Tip>
-Subtrace recommends using a Linux kernel of 5.14 or newer, which requires the
-[EC2 launch type](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters_ec2.html)
-for your tasks. The
-[Fargate launch type](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html),
-which is the default, is still on kernel 5.10 as of May 2025.
-
-Set the `SUBTRACE_ANCIENT_KERNEL=1` environment variable in your task
-definition to use Subtrace if your cluster is based on the Fargate launch type
-by modifying your task with the web interface or by editing the task JSON:
-
-     ```json
-     "environment": [
-       {
-         "name": "SUBTRACE_ANCIENT_KERNEL",
-         "value": "1"
-       }
-     ]
-     ```
-</Tip>
 
 ---
 

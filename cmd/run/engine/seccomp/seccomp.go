@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"runtime"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
@@ -347,8 +345,8 @@ func (n *Notif) Return(ret uintptr, errno syscall.Errno) error {
 var SUBTRACE_SECCOMP_ADDFD_FLAGS primitive.Uint32 = SECCOMP_ADDFD_FLAG_SEND
 
 func init() {
-	switch strings.ToLower(os.Getenv("SUBTRACE_ANCIENT_KERNEL")) {
-	case "1", "t", "true", "y", "yes":
+	if _, _, err := kernel.CheckVersion("5.14", true); err != nil {
+		slog.Debug("kernel version < 5.14, unsetting SECCOMP_ADDFD_FLAG_SEND")
 		SUBTRACE_SECCOMP_ADDFD_FLAGS ^= SECCOMP_ADDFD_FLAG_SEND
 	}
 }

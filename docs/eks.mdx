@@ -8,12 +8,11 @@ icon: "aws"
 If you're using AWS EKS to deploy your app, Subtrace is a great way to monitor your network requests in realtime.
 
 <Note>
-  Subtrace requires Linux kernel version 5.14 or newer. Some AMIs like Amazon Linux 2 use an older version of the
-  kernel. If your nodes run one of these images, you'll need to upgrade nodes running Subtrace to a newer image like
-  Amazon Linux 2023.
+  Subtrace requires Linux kernel version 5.9+.
+
   <Accordion title="How do I check what image/kernel version I'm using?">
     1. Navigate to your cluster in AWS.
-    
+
     2. Under the **Compute** tab, you'll see your cluster's nodes.
     ![Cluster nodes](/images/eks/node-list.png)
 

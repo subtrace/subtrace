@@ -146,9 +146,6 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		case errors.Is(err, kernel.ErrUnsupportedVersion):
 			major, minor, _ := kernel.CheckVersion(minKernelVersion, false)
 			fmt.Fprintf(os.Stderr, "subtrace: error: unsupported Linux kernel version (got %d.%d, want %s+)\n", major, minor, minKernelVersion)
-			if os.Getenv("SUBTRACE_ANCIENT_KERNEL") == "" && major == 5 && minor >= 9 {
-				fmt.Fprintf(os.Stderr, "subtrace: tip: you may override this with the SUBTRACE_ANCIENT_KERNEL=1 environment variable (experimental)")
-			}
 			os.Exit(1)
 
 		default:
@@ -255,16 +252,15 @@ func (c *Command) ensureAsyncPreemptionHack() error {
 
 var errMissingCommand = fmt.Errorf("missing COMMAND")
 
-// NOTE: the minimum kernel version is 5.9 if SUBTRACE_ANCIENT_KERNEL is set to true
 var (
 	// required >= 5.0  (2019-03-03) for seccom_unotify(2)
 	// required >= 5.3  (2019-09-15) for pidfd_open(2)
 	// required >= 5.6  (2020-03-29) for pidfd_getfd(2)
 	// required >= 5.7  (2020-05-31) for SECCOMP_FILTER_FLAG_TSYNC_ESRCH
 	// required >= 5.9  (2020-10-11) for SECCOMP_IOCTL_NOTIF_ADDFD
-	// required >= 5.14 (2021-08-29) for SECCOMP_ADDFD_FLAG_SEND (optional if SUBTRACE_ANCIENT_KERNEL is set)
-	//          >= 5.19 (2022-07-31) for SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV
-	minKernelVersion = "5.14"
+	// optional >= 5.14 (2021-08-29) for SECCOMP_ADDFD_FLAG_SEND
+	// optional >= 5.19 (2022-07-31) for SECCOMP_FILTER_FLAG_WAIT_KILLABLE_RECV
+	minKernelVersion = "5.9"
 )
 
 func (c *Command) entrypointParent(ctx context.Context, args []string) (int, error) {
@@ -277,12 +273,6 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 	}
 
 	slog.Debug("starting tracer parent", "pid", os.Getpid())
-
-	switch strings.ToLower(os.Getenv("SUBTRACE_ANCIENT_KERNEL")) {
-	case "1", "t", "true", "y", "yes":
-		slog.Debug("overriding minimum required kernel version to 5.9", "SUBTRACE_ANCIENT_KERNEL", os.Getenv("SUBTRACE_ANCIENT_KERNEL"))
-		minKernelVersion = "5.9"
-	}
 
 	if _, _, err := kernel.CheckVersion(minKernelVersion, true); err != nil {
 		return 0, fmt.Errorf("check kernel version: %w", err)
