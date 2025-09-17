@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -111,11 +112,14 @@ func (a *abstractListener) start() {
 		if err != nil {
 			select {
 			case <-a.ctx.Done():
-				return
 			default:
-				slog.Error("failed to accept unix connection from unix listener", "err", err)
-				return
+				switch {
+				case strings.Contains(err.Error(), "use of closed network connection"):
+				default:
+					slog.Error("failed to accept unix connection from unix listener", "err", err)
+				}
 			}
+			return
 		}
 
 		slog.Debug("accepted new abstract listener conn", "conn", fmt.Sprintf("%p", conn))
