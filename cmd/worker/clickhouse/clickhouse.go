@@ -20,6 +20,7 @@ import (
 
 type Client struct {
 	driver.Conn
+	database string
 }
 
 func newClient(ctx context.Context, host string, database string) (*Client, error) {
@@ -44,7 +45,7 @@ func newClient(ctx context.Context, host string, database string) (*Client, erro
 	}
 
 	slog.Info("connected to clickhouse server", "name", info.DisplayName, "version", info.Version, "revision", info.Revision)
-	return &Client{Conn: conn}, nil
+	return &Client{Conn: conn, database: database}, nil
 }
 
 func New(ctx context.Context, host string, database string) (*Client, error) {
@@ -75,13 +76,28 @@ var migrations embed.FS
 // ApplyMigrations applies all previously unapplied migrations for the given
 // suffix. If successful, it returns the number of newly applied migrations.
 func (c *Client) ApplyMigrations(ctx context.Context, suffix string) (applied int, _ error) {
-	if err := c.Exec(ctx, fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS subtrace_migrations_%s (
-			file String PRIMARY KEY,
-			insert_time DateTime64(6, 'UTC') NOT NULL,
-		) ENGINE = MergeTree ORDER BY file;
-	`, suffix)); err != nil {
-		return 0, fmt.Errorf("CREATE TABLE subtrace_migrations_%s: %w", suffix, err)
+	// Perform existence check, it's quick and avoids CH locking the database metadata if we don't
+	// need to create the table (almost always the case)
+	var exists bool
+	if err := c.QueryRow(ctx, `
+		SELECT COUNT(*) > 0
+		FROM system.tables
+		WHERE database = $1
+		AND name = $2;
+	`, c.database, fmt.Sprintf("subtrace_migrations_%s", suffix)).Scan(&exists); err != nil {
+		return 0, fmt.Errorf("SELECT system.tables: subtrace_migrations_%s: %w", suffix, err)
+	}
+
+	if !exists {
+		slog.Info("creating migration table if not present", "name", fmt.Sprintf("subtrace_migrations_%s", suffix))
+		if err := c.Exec(ctx, fmt.Sprintf(`
+			CREATE TABLE IF NOT EXISTS subtrace_migrations_%s (
+				file String PRIMARY KEY,
+				insert_time DateTime64(6, 'UTC') NOT NULL,
+			) ENGINE = MergeTree ORDER BY file;
+		`, suffix)); err != nil {
+			return 0, fmt.Errorf("CREATE TABLE subtrace_migrations_%s: %w", suffix, err)
+		}
 	}
 
 	files, err := migrations.ReadDir("migrations")
