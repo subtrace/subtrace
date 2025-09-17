@@ -1,25 +1,25 @@
 ---
 title: "Quickstart"
 sidebarTitle: "Quickstart"
-description: "Integrate Subtrace with just one command"
+description: "Inspect your backend requests with just one command"
 icon: "rocket"
 ---
 
-Subtrace is an API monitoring tool. It connects your backend to Chrome
-DevTools so that you can inspect the latency of each API request. We'll show
-you how you can start using Subtrace with just a single command.
+Subtrace is the network inspector for your backend. With just one command, you'll be able to see every HTTP request in your backend.
+
+Follow this guide to add it to your codebase in under two minutes.
 
 <Steps>
-  <Step title="Download">
-    Open a terminal and install Subtrace:
+  <Step title="Install the Subtrace CLI">
+    Open a terminal and install the Subtrace CLI:
 
     ```bash
     curl -fsSL https://subtrace.dev/install.sh | sh
     ```
   </Step>
 
-  <Step title="Run">
-    Run your backend server startup command with Subtrace:
+  <Step title="Start with Subtrace">
+    Start your backend like you normally do but wrap the command with Subtrace:
 
     <CodeGroup>
       ```bash Generic
@@ -64,6 +64,8 @@ you how you can start using Subtrace with just a single command.
   </Step>
 </Steps>
 
+## Next steps
+
 Check out the guide specific to your backend for next steps:
 
 - **Node**: [Express.js](/nodejs-express)
@@ -73,3 +75,15 @@ Check out the guide specific to your backend for next steps:
 If your language or framework isn't listed here, let us know and we can help
 you get started. Join our [discord server](https://subtrace.dev/discord) or
 email us at [support@subtrace.dev](support@subtrace.dev) for assistance.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title='Error: subtrace: missing SYS_PTRACE capability'>
+    Subtrace requires the `SYS_PTRACE` Linux capability to work correctly. If you're using Subtrace inside Docker, add the `--cap-add=SYS_PTRACE` flag to your container startup command:
+    ```bash
+    docker run --cap-add=SYS_PTRACE my-docker-image:latest
+    ```
+    See [this](/docs/ptrace) for more details.
+  </Accordion>
+</AccordionGroup>
