@@ -7,21 +7,23 @@ icon: "sliders"
 
 Subtrace can be configured with the following environment variables.
 
-- `SUBTRACE_TOKEN`
-  - Secret token used to authenticate with the Subtrace cloud. Recommended but optional. Without this, each `subtrace run` invocation will generate a different dashboard URL.
+## `SUBTRACE_TOKEN`
+Secret token used to authenticate with the Subtrace dashboard. Recommended but optional. Without this, each `subtrace run` invocation will generate a new, ephemeral dashboard URL.
 
-- `SUBTRACE_PAYLOAD_LIMIT`
-  - Max bytes captured for request/response bodies. Default 4096 bytes. Set `SUBTRACE_PAYLOAD_LIMIT=65536` to debug larger payloads.
+## `SUBTRACE_PAYLOAD_LIMIT`
+Max bytes captured for request/response payloads. Defaults to 4096 bytes. Set `SUBTRACE_PAYLOAD_LIMIT=65536` to debug larger payloads, for example.
 
-- `SUBTRACE_TLS`
-  - Intercept outgoing TLS. Default enabled. Set `SUBTRACE_TLS=false` to turn off TLS interception if you face TLS issues.
+## `SUBTRACE_TLS`
+Intercept outgoing TLS. Default enabled. Set `SUBTRACE_TLS=false` to turn off TLS interception if you face TLS issues.
 
-- `SUBTRACE_HTTP2`
-  - HTTP/2 capture control. Default enabled. Set to `SUBTRACE_HTTP2=false` to disable if you hit protocol‑specific issues.
+## `SUBTRACE_HTTP2`
+HTTP/2 capture control. Default enabled. Set `SUBTRACE_HTTP2=false` to disable if you face HTTP/2 issues.
 
-- `SUBTRACE_WEBSOCKET`
-  - WebSocket capture support (experimental). Default disabled. Set `SUBTRACE_WEBSOCKET=true` to enable.
-  - Optional: `SUBTRACE_WEBSOCKET_TIME_LIMIT` (seconds) to limit long‑lived streams (default ~110s).
+## `SUBTRACE_WEBSOCKET`
+WebSocket capture support (experimental). Default disabled. Set `SUBTRACE_WEBSOCKET=true` to enable.
 
-- `SUBTRACE_LINK_ID_OVERRIDE`
-  - Override the ephemeral link ID when no token is set. Mostly useful for automation and demos.
+## `SUBTRACE_WEBSOCKET_TIME_LIMIT`
+When WebSockets are enabled, optional time limit (seconds) for long‑lived streams. Default ~110s.
+
+## `SUBTRACE_LINK_ID_OVERRIDE`
+Override the ephemeral link ID when no token is set. Mostly useful for automation and demos.
