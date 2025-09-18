@@ -32,10 +32,10 @@ func listenAbstractStable() (*net.UnixListener, int, error) {
 	h.Write([]byte{0})
 
 	// We want to find a stable, unique reference to the user's terminal window
-	// so that invoking `subtrace run` twice will listen on the same abstract
-	// Unix address. The TTY tty is a nice stable way to do this. In the future,
-	// when we add support for non-Linux systems, it's probably better to start
-	// with /dev/stdin to be portable.
+	// so that invoking `subtrace run` twice will listen on the same Unix
+	// address. The TTY tty is a nice stable way to do this. In the future, when
+	// we add support for non-Linux systems, it's probably better to start with
+	// /dev/stdin to be portable.
 	tty, err := os.Readlink("/proc/self/fd/0")
 	if err != nil {
 		return nil, 0, fmt.Errorf("readlink /proc/self/fd/0: %w", err)
@@ -47,7 +47,7 @@ func listenAbstractStable() (*net.UnixListener, int, error) {
 	rand := rand.New(rand.NewSource(int64(binary.LittleEndian.Uint64(hash[:8]))))
 	tracerID := 1_000 + rand.Intn(9_000)
 
-	lis, err := net.ListenUnix("unix", &net.UnixAddr{Net: "unix", Name: fmt.Sprintf("@%04d.subtrace", tracerID)})
+	lis, err := net.ListenUnix("unix", &net.UnixAddr{Net: "unix", Name: fmt.Sprintf("@%d.subtrace", tracerID)})
 	if err != nil {
 		return nil, 0, fmt.Errorf("listen: %w", err)
 	}
@@ -79,7 +79,7 @@ func newAbstractListener(ctx context.Context) (*abstractListener, error) {
 		for i := 0; i < 10; i++ {
 			rand := rand.New(rand.NewSource(time.Now().UnixNano()))
 			id := 100_000 + rand.Intn(900_000)
-			lis, err = net.ListenUnix("unix", &net.UnixAddr{Net: "unix", Name: fmt.Sprintf("@%06d.subtrace", id)})
+			lis, err = net.ListenUnix("unix", &net.UnixAddr{Net: "unix", Name: fmt.Sprintf("@%d.subtrace", id)})
 			if err == nil {
 				tracerID = id
 				break
@@ -87,7 +87,7 @@ func newAbstractListener(ctx context.Context) (*abstractListener, error) {
 		}
 	}
 	if lis == nil {
-		return nil, fmt.Errorf("abstract subtrace socket space is full")
+		return nil, fmt.Errorf("unix subtrace socket space is full")
 	}
 
 	s := &abstractListener{
@@ -122,7 +122,7 @@ func (a *abstractListener) start() {
 			return
 		}
 
-		slog.Debug("accepted new abstract listener conn", "conn", fmt.Sprintf("%p", conn))
+		slog.Debug("accepted new unix listener conn", "conn", fmt.Sprintf("%p", conn))
 		a.addConn(conn)
 	}
 }
@@ -146,7 +146,7 @@ func (a *abstractListener) removeConn(conn *net.UnixConn) {
 		if a.conns[i] == conn {
 			a.conns = append(a.conns[:i], a.conns[i+1:]...)
 			a.locks = append(a.locks[:i], a.locks[i+1:]...)
-			slog.Debug("removed abstract listener conn", "conn", fmt.Sprintf("%p", conn))
+			slog.Debug("removed unix listener conn", "conn", fmt.Sprintf("%p", conn))
 			return
 		}
 	}

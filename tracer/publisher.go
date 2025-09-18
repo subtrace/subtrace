@@ -151,7 +151,7 @@ func box(title string, body ...string) {
 	fmt.Fprintf(b, "%s%s%s %s %s%s%s\n", prefix, LT, strings.Repeat(HH, (width-(1+1+len(title)+1+1))/2), title, strings.Repeat(HH, (width-(1+1+len(title)+1+1))/2), RT, suffix)
 	for _, line := range lines {
 		lp, ls := "", ""
-		if term.IsTerminal(int(os.Stderr.Fd())) && (strings.Contains(line, "https://") || strings.Contains(line, "socat abstract-connect:")) {
+		if term.IsTerminal(int(os.Stderr.Fd())) && (strings.Contains(line, "https://") || strings.Contains(line, "subtrace tail")) {
 			lp, ls = "\033[0;34m", "\033[0m"
 		}
 		fmt.Fprintf(b, "%s%s%s  %s"+fmt.Sprintf("%%-%ds", width-3-3)+"%s  %s%s%s\n", prefix, VV, suffix, lp, line, ls, prefix, VV, suffix)
@@ -180,7 +180,7 @@ func (p *publisher) showURL(val string) {
 			"",
 			"Or run this command in a different terminal:",
 			"",
-			fmt.Sprintf("    socat abstract-connect:%d.subtrace -", DefaultAbstractListener.TracerID),
+			fmt.Sprintf("    subtrace tail @%d", DefaultAbstractListener.TracerID),
 		)
 	}
 
