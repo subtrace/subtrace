@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -74,6 +75,16 @@ func (t *Tail) entrypoint(ctx context.Context, args []string) error {
 		return fmt.Errorf("init logging: %w", err)
 	}
 
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "@") {
+			if err := t.dumpLocal(arg + ".subtrace"); err != nil {
+				fmt.Fprintf(os.Stderr, "subtrace: %v", err)
+				os.Exit(1)
+			}
+			return nil
+		}
+	}
+
 	if os.Getenv("SUBTRACE_TOKEN") == "" {
 		fmt.Fprintf(os.Stderr, "subtrace: error: missing SUBTRACE_TOKEN")
 		os.Exit(1)
@@ -92,6 +103,18 @@ func (t *Tail) entrypoint(ctx context.Context, args []string) error {
 		os.Exit(1)
 		return nil
 	}
+	return nil
+}
+
+func (t *Tail) dumpLocal(path string) error {
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %w", path, err)
+	}
+	defer conn.Close()
+
+	io.Copy(os.Stdout, conn)
+
 	return nil
 }
 
