@@ -85,11 +85,6 @@
           "icon": "table"
         },
         {
-          "anchor": "Documentation",
-          "href": "https://subtrace.dev/docs",
-          "icon": "book-open-cover"
-        },
-        {
           "anchor": "Discord",
           "href": "https://subtrace.dev/discord",
           "icon": "discord"
