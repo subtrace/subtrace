@@ -76,11 +76,16 @@ Expand the environment you're using to find the exact change to make.
   </Accordion>
 
   <Accordion title="Flightcontrol">
-    Subtrace is currently not supported on [Flightcontrol](https://flightcontrol.dev)-managed deployments.
+    Add the `linuxCapabilities` section to your `flightcontrol.json`:
 
-    Flightcontrol does not yet expose the ability to add the required `SYS_PTRACE` capability (and related kernel features) in its deployment configuration, so Subtrace cannot initialize and will fail with the `error: subtrace: missing SYS_PTRACE capability` message.
-
-    We’re working with the Flightcontrol team to add first‑class support. In the meantime, consider deploying the same container on ECS (with `linuxParameters.capabilities.add: ["SYS_PTRACE"]`), Kubernetes, or Docker where you can set the capability explicitly.
+    ```json {3-4}
+    "target": {
+      "type": "fargate",
+      "linuxCapabilities": {
+        "add": ["SYS_PTRACE"]
+      }
+    }
+    ```
   </Accordion>
 
 </AccordionGroup>
