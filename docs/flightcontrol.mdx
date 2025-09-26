@@ -1,0 +1,36 @@
+---
+title: "Using Subtrace with Flightcontrol"
+sidebarTitle: "Flightcontrol"
+description: "Integrate your app with Subtrace on Flightcontrol"
+icon: "/images/flightcontrol/icon.svg"
+---
+
+If you deploy your app using Flightcontrol, you can use Subtrace to monitor all its
+requests. Here's how you can get started:
+
+1. Add these lines to your `flightcontrol.json` file under the `target` section:
+
+```json {3-4}
+"target": {
+    "type": "fargate",
+    "linuxCapabilities": {
+        "add": ["SYS_PTRACE"]
+    }
+}
+```
+
+2. Add the `SUBTRACE_TOKEN` environment variable to Flightcontrol:
+
+<img className="rounded-xl" src="/images/flightcontrol/env-var.png" />
+
+<Tip>
+  If you don’t have a Subtrace token yet, go to the Tokens page on the [dashboard](https://subtrace.dev/dashboard) and
+  create a tracer token.
+</Tip>
+
+3. Deploy your app as you normally do on Flightcontrol.
+
+<br />
+
+That's it! You can now visit your app and make some requests to see them automatically appear in the Subtrace
+dashboard.
