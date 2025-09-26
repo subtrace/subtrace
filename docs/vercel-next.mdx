@@ -2,7 +2,7 @@
 title: "Use Subtrace on Vercel+Next.js"
 sidebarTitle: "Vercel + Next.js"
 description: "Monitor network requests in your Next.js app using Subtrace."
-icon: "triangle"
+icon: "/images/vercel/icon.svg"
 ---
 
 <Note>
@@ -50,7 +50,7 @@ export const GET = trace((request: NextRequest) => {
 
 4. Add the `SUBTRACE_TOKEN` environment variable to your preview/production environments on Vercel:
 
-![Environment variable](/images/vercel-env-var.png)
+![Environment variable](/images/vercel/env-var.png)
 
 <Tip>Mark this as a sensitive environment variable.</Tip>
 
