@@ -1,0 +1,17 @@
+{
+	"compilerOptions": {
+		"target": "es2021",
+		"lib": ["es2021"],
+		"jsx": "react-jsx",
+		"module": "es2022",
+		"resolveJsonModule": true,
+		"allowJs": true,
+		"checkJs": false,
+		"allowSyntheticDefaultImports": true,
+		"forceConsistentCasingInFileNames": true,
+		"strict": false,
+		"skipLibCheck": true,
+    "types": ["./worker-runtime.d.ts"]
+	},
+	"include": ["worker-runtime.d.ts", "*.ts"]
+}

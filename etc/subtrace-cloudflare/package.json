@@ -1,0 +1,26 @@
+{
+  "name": "@subtrace/cloudflare",
+  "version": "0.0.1",
+  "description": "@subtrace/cloudflare",
+  "license": "BSD-3-Clause",
+  "dependencies": {
+    "ts-proto": "^2.7.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250927.0",
+    "typescript": "5.9.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/subtrace/subtrace.git"
+  },
+  "bugs": {
+    "url": "https://github.com/subtrace/subtrace/issues"
+  },
+  "homepage": "https://github.com/subtrace/subtrace#readme",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": ""
+}
