@@ -19,7 +19,7 @@ Wrap your Worker's `fetch` handler to use the Subtrace middleware:
 import { subtrace } from "@subtrace/cloudflare";
 
 export default {
-  fetch: subtrace((request, env, ctx) => {
+  fetch: subtrace(async (request, env, ctx) => {
     return new Response("Hello World!");
   }),
 };
