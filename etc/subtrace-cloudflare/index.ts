@@ -1,135 +1,43 @@
 import * as pubsub from "./pubsub.js";
 
+import { waitUntil } from "cloudflare:workers";
+
 let SUBTRACE_TOKEN: string | null = null;
 
-let req: Request;
-
-type ConnState =
-  | {
-      kind: "Uninitialized";
-    }
-  | { kind: "Creating"; value: Promise<WebSocket> }
-  | {
-      kind: "Created";
-      value: WebSocket;
-    };
-
 const originalFetch = globalThis.fetch;
-const connKey = Symbol.for("SUBTRACE_WEBSOCKET_CONNECTION");
 
-async function wait(ms: number): Promise<void> {
-  return new Promise<void>((resolve) =>
-    setTimeout(() => {
-      resolve();
-    }, ms)
-  );
-}
-
-async function getWebSocket(): Promise<WebSocket> {
-  const state: ConnState | undefined = (globalThis as any)[connKey];
-  switch (state?.kind) {
-    case "Uninitialized":
-    case undefined:
-    case null:
-      const promise = createWebSocket();
-      (globalThis as any)[connKey] = { kind: "Creating", value: promise };
-      return promise;
-
-    case "Creating":
-      const result = await state.value;
-      (globalThis as any)[connKey] = { kind: "Created", value: result };
-      return result;
-
-    case "Created":
-      return state.value;
-
-    default:
-      throw new Error(`Unexpected conn state: ${state}`);
-  }
-}
-
-async function createWebSocket(): Promise<WebSocket> {
-  let backoff = 1000;
-  while (true) {
-    let joinPubResp: Response;
-
-    try {
-      joinPubResp = await originalFetch(`https://subtrace.dev/api/JoinPublisher`, {
-        method: "POST",
-        body: JSON.stringify({}),
-        headers: {
-          Authorization: `Bearer ${SUBTRACE_TOKEN}`,
-        },
-      });
-
-      if (joinPubResp.status !== 200) {
-        await wait(backoff);
-        backoff = Math.min(backoff + 1000, 10000);
-        continue;
-      }
-    } catch (err: unknown) {
-      console.log(err);
-      await wait(backoff);
-      backoff = Math.min(backoff + 1000, 10000);
-      continue;
-    }
-
-    backoff = 1000;
-
-    const { websocketUrl } = await joinPubResp.json() as any;
-
-    const ws = new WebSocket(websocketUrl);
-    (ws as any).binaryType = "arraybuffer";
-    try {
-      await new Promise<void>((resolve, reject) => {
-        if (ws?.readyState === WebSocket.OPEN) {
-          resolve();
-        }
-        ws?.addEventListener("open", () => resolve(), { once: true });
-        ws?.addEventListener("error", (ev) => reject(new Error(JSON.stringify(ev))), { once: true });
-        ws?.addEventListener("close", (ev) => reject(new Error(ev.reason)), { once: true });
-      });
-    } catch (error: unknown) {
-      console.log(error);
-      await wait(backoff);
-      backoff = Math.min(backoff + 1000, 10000);
-      continue;
-    }
-
-    return ws;
-  }
-}
-
-async function pushEvent(event: any): Promise<void> {
+async function publishEvent(event: any): Promise<void> {
 	if (SUBTRACE_TOKEN === null) {
-		// TODO: probably not the right thing to do
+		// TODO: probably not the right thing to do?
 		console.log(JSON.stringify(event, null, 2));
 		return;
 	}
 
-  const data = pubsub.Message.encode({
-    concreteV1: {
-      event: {
-        concreteV1: {
-          harEntryJson: (new TextEncoder()).encode(JSON.stringify(event["http"])),
-          tags: event["tags"],
-          log: undefined,
-        },
-      },
+  const resp = await originalFetch(`https://subtrace.dev/api/PublishEvents`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${SUBTRACE_TOKEN}`
     },
-  }).finish();
-
-	let ws = await getWebSocket();
-  try {
-    if (ws.readyState !== WebSocket.OPEN) {
-      (globalThis as any)[connKey] = { kind: "Uninitialized" };
-      ws = await getWebSocket();
+    body: JSON.stringify(pubsub.PublishEvents_Request.toJSON({
+			events: [
+				{
+					concreteV1: {
+						harEntryJson: (new TextEncoder()).encode(JSON.stringify(event["http"])),
+						tags: event["tags"],
+						log: undefined,
+					},
+				},
+			],
+		})),
+  });
+  if (resp.status != 200) {
+    let err = `subtrace: failed to publish events: status ${resp.status}: ${resp.statusText}`
+    const msg = await resp.text();
+    if (msg != "") {
+      err = `${err}: ${msg}`
     }
-    ws.send(data);
-  } catch (error: unknown) {
-    console.log(error);
-    ws.close();
-    (globalThis as any)[connKey] = { kind: "Uninitialized" };
+    console.error(err);
+    return;
   }
 }
 
@@ -194,9 +102,8 @@ function patchFetch() {
     return;
   }
 
-  const subtraceFetch = async (input: RequestInfo | URL, init?: RequestInit<RequestInitCfProperties>): Promise<Response> => {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit<RequestInitCfProperties>): Promise<Response> => {
 		const event: any = newEvent();
-		console.log(init);
 
 		for (const [key, val] of Object.entries(init?.cf ?? {})) {
 			switch (key) {
@@ -251,6 +158,7 @@ function patchFetch() {
 					event["http"]["response"]["_error"] = JSON.stringify(err);
 				}
 			}
+			waitUntil(publishEvent(event));
 		} else {
 			event["http"]["response"]["status"] = response.status;
 			event["http"]["response"]["statusText"] = response.statusText;
@@ -280,12 +188,12 @@ function patchFetch() {
 				responseClone.bytes().then(bytes => resolve(bytes)).catch(reason => reject(reason));
 			});
 
-			Promise.all([requestBytes, responseBytes]).then(([requestBytes, responseBytes]) => {
+			waitUntil(Promise.all([requestBytes, responseBytes]).then(([requestBytes, responseBytes]) => {
 				event["http"]["request"]["postData"]["text"] = btoa((new TextDecoder('utf8')).decode(requestBytes));
 				event["http"]["response"]["content"]["size"] = responseBytes.length;
 				event["http"]["response"]["content"]["text"] = btoa((new TextDecoder('utf8')).decode(responseBytes));
-				pushEvent(event);
-			});
+				return publishEvent(event);
+			}));
 		}
 
 		if (response !== null) {
@@ -294,8 +202,6 @@ function patchFetch() {
 			throw err;
 		}
 	};
-
-  globalThis.fetch = subtraceFetch;
 }
 
 export function subtrace<T>(handler: ExportedHandlerFetchHandler<T, any>): ExportedHandlerFetchHandler<T, any> {
@@ -354,6 +260,7 @@ export function subtrace<T>(handler: ExportedHandlerFetchHandler<T, any>): Expor
 					event["http"]["response"]["_error"] = JSON.stringify(err);
 				}
 			}
+			ctx.waitUntil(publishEvent(event));
 		} else {
 			event["http"]["response"]["status"] = response.status;
 			event["http"]["response"]["statusText"] = response.statusText;
@@ -376,12 +283,12 @@ export function subtrace<T>(handler: ExportedHandlerFetchHandler<T, any>): Expor
 				responseClone.bytes().then(bytes => resolve(bytes)).catch(reason => reject(reason));
 			});
 
-			Promise.all([requestBytes, responseBytes]).then(([requestBytes, responseBytes]) => {
+			ctx.waitUntil(Promise.all([requestBytes, responseBytes]).then(([requestBytes, responseBytes]) => {
 				event["http"]["request"]["postData"]["text"] = btoa((new TextDecoder('utf8')).decode(requestBytes));
 				event["http"]["response"]["content"]["size"] = responseBytes.length;
 				event["http"]["response"]["content"]["text"] = btoa((new TextDecoder('utf8')).decode(responseBytes));
-				pushEvent(event);
-			});
+				return publishEvent(event);
+			}));
 		}
 
 		if (response !== null) {
