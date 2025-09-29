@@ -201,7 +201,7 @@ function patchFetch() {
 		for (const [key, val] of Object.entries(init?.cf ?? {})) {
 			switch (key) {
 			default:
-				(event["tags"] as any)[`request.cf.${key}`] = val;
+				(event["tags"] as any)[`request.cf.${key}`] = (val as any).toString();
 			}
 		}
 
@@ -261,7 +261,7 @@ function patchFetch() {
 			for (const [key, val] of Object.entries(response.cf ?? {})) {
 				switch (key) {
 				default:
-					(event["tags"] as any)[`response.cf.${key}`] = val;
+					(event["tags"] as any)[`response.cf.${key}`] = (val as any).toString();
 				}
 			}
 			if (response.headers.has("content-type")) {
@@ -315,7 +315,7 @@ export function subtrace<T>(handler: ExportedHandlerFetchHandler<T, any>): Expor
 			case "tlsExportedAuthenticator":
 				break;
 			default:
-				(event["tags"] as any)[`request.cf.${key}`] = val;
+				(event["tags"] as any)[`request.cf.${key}`] = (val as any).toString();
 			}
 		}
 		event["http"]["request"]["method"] = request.method;
@@ -364,7 +364,7 @@ export function subtrace<T>(handler: ExportedHandlerFetchHandler<T, any>): Expor
 			for (const [key, val] of Object.entries(response.cf ?? {})) {
 				switch (key) {
 				default:
-					(event["tags"] as any)[`response.cf.${key}`] = val;
+					(event["tags"] as any)[`response.cf.${key}`] = (val as any).toString();
 				}
 			}
 			if (response.headers.has("content-type")) {
