@@ -1,0 +1,60 @@
+---
+title: "Cloudflare Workers"
+sidebarTitle: "Cloudflare Workers"
+description: "Use Subtrace to see HTTP requests in your Cloudflare Workers"
+icon: "cloudflare"
+---
+
+Here's a quick guide to setting up Subtrace in your Cloudflare Workers.
+
+First, add `@subtrace/cloudflare` to your Worker `package.json`:
+
+```bash icon="terminal"
+npm install @subtrace/cloudflare
+```
+
+Wrap your Worker's `fetch` handler to use the Subtrace middleware:
+
+```js src/index.js icon="javascript" highlight={1,4,6}
+import { subtrace } from "@subtrace/cloudflare";
+
+export default {
+  fetch: subtrace((request, env, ctx) => {
+    return new Response("Hello World!");
+  }),
+};
+```
+
+Set a `SUBTRACE_TOKEN` environment variable in your [Wrangler config file](https://developers.cloudflare.com/workers/wrangler/configuration/):
+
+<CodeGroup dropdown>
+```json wrangler.jsonc highlight={6-7}
+{
+  "name": "my-worker",
+  "main": "src/index.js",
+  "compatibility_date": "2025-09-27",
+  "vars": {
+    // Go to https://subtrace.dev/dashboard to generate a token
+    "SUBTRACE_TOKEN": "subt_..."
+  }
+}
+```
+
+```toml wrangler.toml highlight={6-7}
+name = "my-worker"
+main = "src/index.js"
+compatibility_date = "2025-09-27"
+
+[vars]
+# Go to https://subtrace.dev/dashboard to generate a token
+SUBTRACE_TOKEN = "subt_..."
+```
+</CodeGroup>
+
+Deploy your Cloudflare Worker:
+
+```bash icon="terminal"
+npx wrangler deploy
+```
+
+And that's it, you can now see all inbound and outbound HTTP requests in your Cloudflare Worker via the [Subtrace dashboard](https://subtrace.dev/dashboard)!
