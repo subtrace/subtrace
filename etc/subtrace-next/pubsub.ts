@@ -35,6 +35,18 @@ export interface JoinSubscriber_Response {
   websocketUrl: string;
 }
 
+/** POST /api/PublishEvents */
+export interface PublishEvents {
+}
+
+export interface PublishEvents_Request {
+  events: Event[];
+}
+
+export interface PublishEvents_Response {
+  error?: string | undefined;
+}
+
 export interface Event {
   concreteV1?: Event_V1 | undefined;
 }
@@ -443,6 +455,165 @@ export const JoinSubscriber_Response: MessageFns<JoinSubscriber_Response> = {
     const message = createBaseJoinSubscriber_Response();
     message.error = object.error ?? undefined;
     message.websocketUrl = object.websocketUrl ?? "";
+    return message;
+  },
+};
+
+function createBasePublishEvents(): PublishEvents {
+  return {};
+}
+
+export const PublishEvents: MessageFns<PublishEvents> = {
+  encode(_: PublishEvents, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): PublishEvents {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBasePublishEvents();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): PublishEvents {
+    return {};
+  },
+
+  toJSON(_: PublishEvents): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<PublishEvents>, I>>(base?: I): PublishEvents {
+    return PublishEvents.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<PublishEvents>, I>>(_: I): PublishEvents {
+    const message = createBasePublishEvents();
+    return message;
+  },
+};
+
+function createBasePublishEvents_Request(): PublishEvents_Request {
+  return { events: [] };
+}
+
+export const PublishEvents_Request: MessageFns<PublishEvents_Request> = {
+  encode(message: PublishEvents_Request, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.events) {
+      Event.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): PublishEvents_Request {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBasePublishEvents_Request();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.events.push(Event.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): PublishEvents_Request {
+    return { events: globalThis.Array.isArray(object?.events) ? object.events.map((e: any) => Event.fromJSON(e)) : [] };
+  },
+
+  toJSON(message: PublishEvents_Request): unknown {
+    const obj: any = {};
+    if (message.events?.length) {
+      obj.events = message.events.map((e) => Event.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<PublishEvents_Request>, I>>(base?: I): PublishEvents_Request {
+    return PublishEvents_Request.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<PublishEvents_Request>, I>>(object: I): PublishEvents_Request {
+    const message = createBasePublishEvents_Request();
+    message.events = object.events?.map((e) => Event.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBasePublishEvents_Response(): PublishEvents_Response {
+  return { error: undefined };
+}
+
+export const PublishEvents_Response: MessageFns<PublishEvents_Response> = {
+  encode(message: PublishEvents_Response, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.error !== undefined) {
+      writer.uint32(8002).string(message.error);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): PublishEvents_Response {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBasePublishEvents_Response();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1000: {
+          if (tag !== 8002) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): PublishEvents_Response {
+    return { error: isSet(object.error) ? globalThis.String(object.error) : undefined };
+  },
+
+  toJSON(message: PublishEvents_Response): unknown {
+    const obj: any = {};
+    if (message.error !== undefined) {
+      obj.error = message.error;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<PublishEvents_Response>, I>>(base?: I): PublishEvents_Response {
+    return PublishEvents_Response.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<PublishEvents_Response>, I>>(object: I): PublishEvents_Response {
+    const message = createBasePublishEvents_Response();
+    message.error = object.error ?? undefined;
     return message;
   },
 };
