@@ -28,6 +28,17 @@ message JoinSubscriber {
   }
 }
 
+// POST /api/PublishEvents
+message PublishEvents {
+  message Request {
+    repeated Event events = 1;
+  }
+
+  message Response {
+    optional string error = 1000;
+  }
+}
+
 message Event {
   message Log {
     repeated string lines = 1;
