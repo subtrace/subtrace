@@ -189,9 +189,9 @@ function patchFetch() {
 			});
 
 			waitUntil(Promise.all([requestBytes, responseBytes]).then(([requestBytes, responseBytes]) => {
-				event["http"]["request"]["postData"]["text"] = btoa((new TextDecoder('utf8')).decode(requestBytes));
+				event["http"]["request"]["postData"]["text"] = (requestBytes as any).toBase64();
 				event["http"]["response"]["content"]["size"] = responseBytes.length;
-				event["http"]["response"]["content"]["text"] = btoa((new TextDecoder('utf8')).decode(responseBytes));
+				event["http"]["response"]["content"]["text"] = (responseBytes as any).toBase64();
 				return publishEvent(event);
 			}));
 		}
@@ -284,9 +284,9 @@ export function subtrace<T>(handler: ExportedHandlerFetchHandler<T, any>): Expor
 			});
 
 			ctx.waitUntil(Promise.all([requestBytes, responseBytes]).then(([requestBytes, responseBytes]) => {
-				event["http"]["request"]["postData"]["text"] = btoa((new TextDecoder('utf8')).decode(requestBytes));
+				event["http"]["request"]["postData"]["text"] = (requestBytes as any).toBase64();
 				event["http"]["response"]["content"]["size"] = responseBytes.length;
-				event["http"]["response"]["content"]["text"] = btoa((new TextDecoder('utf8')).decode(responseBytes));
+				event["http"]["response"]["content"]["text"] = (responseBytes as any).toBase64();
 				return publishEvent(event);
 			}));
 		}
