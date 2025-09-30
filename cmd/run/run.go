@@ -278,6 +278,8 @@ func (c *Command) entrypointParent(ctx context.Context, args []string) (int, err
 		return 0, fmt.Errorf("check kernel version: %w", err)
 	}
 
+	process.InitReadWriteVM()
+
 	c.global = new(global.Global)
 
 	if c.flags.pprof != "" {
