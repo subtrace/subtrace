@@ -19,6 +19,7 @@ import (
 	"subtrace.dev/cmd/run/fd"
 	"subtrace.dev/cmd/run/kernel"
 	"subtrace.dev/cmd/run/syscalls"
+	"subtrace.dev/cmd/version"
 )
 
 const (
@@ -89,8 +90,10 @@ func InstallFilter(syscalls []int) (int, error) {
 	//   In order to use the SECCOMP_SET_MODE_FILTER operation, either the
 	//   calling thread must have the CAP_SYS_ADMIN capability in its user
 	//   namespace, or the thread must already have the no_new_privs bit set.
-	if _, _, errno := unix.Syscall(unix.SYS_PRCTL, linux.PR_SET_NO_NEW_PRIVS, 1, 0); errno != 0 {
-		return 0, fmt.Errorf("prctl: PR_SET_NO_NEW_PRIVS: %w", errno)
+	if !version.HasCapability(unix.CAP_SYS_ADMIN) {
+		if _, _, errno := unix.Syscall(unix.SYS_PRCTL, linux.PR_SET_NO_NEW_PRIVS, 1, 0); errno != 0 {
+			return 0, fmt.Errorf("prctl: PR_SET_NO_NEW_PRIVS: %w", errno)
+		}
 	}
 
 	flags := uintptr(SECCOMP_FILTER_FLAG_NEW_LISTENER)

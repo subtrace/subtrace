@@ -50,6 +50,21 @@ var capNames = []string{
 	"checkpoint_restore",
 }
 
+func HasCapability(capability int) bool {
+	hdr := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
+	var data [2]unix.CapUserData
+	if err := unix.Capget(&hdr, &data[0]); err != nil {
+		return false
+	}
+
+	if capability < 32 {
+		return (data[0].Effective & (1 << uint(capability))) != 0
+	} else if capability < 64 {
+		return (data[1].Effective & (1 << uint(capability-32))) != 0
+	}
+	return false
+}
+
 func GetEffectiveCaps() string {
 	effectiveCaps := "unknown"
 	hdr := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
