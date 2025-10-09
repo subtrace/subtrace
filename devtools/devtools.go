@@ -174,6 +174,7 @@ func (s *Server) html(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("cache-control", "max-age=3600")
 	w.Header().Set("cross-origin-opener-policy", "same-origin")
 	w.Header().Set("cross-origin-embedder-policy", "require-corp")
+	w.Header().Set("connection", "close")
 
 	accept := make(map[string]bool)
 	for _, val := range strings.Split(r.Header.Get("accept-encoding"), ",") {
@@ -244,12 +245,10 @@ func newPipeResponseWriter(conn net.Conn, brw *bufio.ReadWriter) *pipeResponseWr
 		errs: make(chan error, 1),
 		done: make(chan struct{}),
 		resp: &http.Response{
-			Proto:      "HTTP/1.0",
 			ProtoMajor: 1,
 			ProtoMinor: 0,
 			Header:     make(http.Header),
 			Body:       pr,
-			Close:      true,
 		},
 	}
 }
