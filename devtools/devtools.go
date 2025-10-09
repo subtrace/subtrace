@@ -277,6 +277,22 @@ func (w *pipeResponseWriter) sendResponse() {
 		w.resp.ContentLength = -1
 	}
 
+	if w.Header().Get("upgrade") == "websocket" {
+		// Safari has a weird bug where HTTP/1.0 connections that upgrade to
+		// Websocket don't work but HTTP/1.1 connections do, hence this ugly
+		// workaround.
+		//
+		// We want the websocket request to use HTTP/1.1 but we don't
+		// want the HTML response to use HTTP/1.1 because we don't want the client
+		// to reuse the HTML request connection (our dumb HTTP hijacker can't do
+		// complex things). But HTTP/1.1 connection reuse semantics don't matter
+		// for the websocket response because 101 Switching Protocols means the
+		// previous protocol (HTTP/1.1) doesn't matter anymore.
+		//
+		// Safari, why can't you just be normal?
+		w.resp.ProtoMinor = 1
+	}
+
 	go func() {
 		defer close(w.done)
 		w.errs <- w.resp.Write(w.conn)
