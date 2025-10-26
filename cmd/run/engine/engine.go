@@ -53,21 +53,28 @@ func New(global *global.Global, seccomp *seccomp.Listener, itab *socket.InodeTab
 	return e
 }
 
-func (e *Engine) ensureProcessLocked(pid int) *process.Process {
+func (e *Engine) ensureProcessLocked(pid int) (*process.Process, error) {
 	if _, ok := e.processes[pid]; !ok {
 		tgid, err := getThreadGroupID(pid)
 		if err != nil {
-			panic(fmt.Errorf("read process: %w", err))
+			if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ESRCH) {
+				return nil, fmt.Errorf("get thread group: %w: %w", process.ErrProcessNotFound, err)
+			}
+			return nil, fmt.Errorf("get thread group: %w", err)
 		}
 		if tgid != pid {
-			leader := e.ensureProcessLocked(tgid)
+			leader, err := e.ensureProcessLocked(tgid)
+			if err != nil {
+				return nil, fmt.Errorf("ensure process: %w", err)
+			}
+
 			e.threads[pid] = leader
-			return leader
+			return leader, nil
 		}
 
 		p, err := process.New(e.global, e.itab, pid)
 		if err != nil {
-			panic(fmt.Errorf("new process: %w", err))
+			return nil, fmt.Errorf("new process: %w", err)
 		}
 
 		slog.Debug("observed new process", "proc", p)
@@ -76,14 +83,17 @@ func (e *Engine) ensureProcessLocked(pid int) *process.Process {
 		// engine locked because this needs to happen exactly once for each process
 		// and must happen before handling the process' first syscall.
 		if err := e.importInodes(p); err != nil {
-			panic(fmt.Errorf("new process %d: import inodes: %w", p.PID, err))
+			if !p.IsRunning() {
+				return nil, fmt.Errorf("new process %d: import inodes: %w: %w", p.PID, process.ErrProcessNotFound, err)
+			}
+			return nil, fmt.Errorf("new process %d: import inodes: %w", p.PID, err)
 		}
 
 		e.processes[pid] = p
 		go e.waitProcess(p)
 	}
 
-	return e.processes[pid]
+	return e.processes[pid], nil
 }
 
 func (e *Engine) importInodes(p *process.Process) error {
@@ -186,13 +196,17 @@ func (e *Engine) getProcessFast(pid int) *process.Process {
 	return nil
 }
 
-func (e *Engine) getProcess(pid int) *process.Process {
+func (e *Engine) getProcess(pid int) (*process.Process, error) {
 	if p := e.getProcessFast(pid); p != nil {
-		return p
+		return p, nil
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.ensureProcessLocked(pid)
+	p, err := e.ensureProcessLocked(pid)
+	if err != nil {
+		return nil, fmt.Errorf("ensure process: %w", err)
+	}
+	return p, nil
 }
 
 func (e *Engine) countRunning() int {
@@ -274,15 +288,27 @@ func (e *Engine) handle(n *seccomp.Notif) {
 		return
 	}
 
-	p := e.getProcess(n.PID)
-
-	switch err := handler(p, n); {
+	p, err := e.getProcess(n.PID)
+	var err2 error
+	switch {
 	case err == nil:
-	case errors.Is(err, seccomp.ErrCancelled):
+		err2 = handler(p, n)
+	case errors.Is(err, process.ErrProcessNotFound):
+		// At this point we can't call handler(p, n) since p is nil.
+		// Instead, tell the kernel to handle the syscall the way it normally would.
+		slog.Debug("handle: process not found", "notif", n, "error", err)
+		err2 = n.Skip()
+	default:
+		panic(fmt.Errorf("get process: %w", err))
+	}
+
+	switch {
+	case err2 == nil:
+	case errors.Is(err2, seccomp.ErrCancelled):
 		// The target's syscall was probably interrupted by a signal. We
 		// don't need to do anything more here.
 	default:
-		slog.Error(fmt.Sprintf("critical error in handling %s", syscalls.GetName(n.Syscall)), "notif", n, "proc", p, "err", err)
+		panic(fmt.Errorf("critical error in handling %s, notif=%v, proc=%v: %w", syscalls.GetName(n.Syscall), n, p, err2))
 	}
 }
 
