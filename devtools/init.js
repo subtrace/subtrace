@@ -3,24 +3,61 @@
 
 class Mutex {
   #counter = 1;
-  #shared = new Uint8Array(new SharedArrayBuffer(1));
+  #shared = null;
+  #locked = false;
+  #useSab = false;
+
+  // We can't guarantee that SharedArrayBuffer is available. For example, they
+  // might be accessing a server locally over HTTP, but using a non-localhost
+  // domain (say using Tailscale). Fall back to a boolean mutex in this case.
+  // See [0] for more details.
+  //
+  // [0] https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer#security_requirements
+  constructor() {
+    if (window.crossOriginIsolated) {
+      try {
+        this.#shared = new Uint8Array(new SharedArrayBuffer(1));
+        this.#useSab = true;
+      } catch (e) {
+        console.error("subtrace: mutex: SharedArrayBuffer", e);
+        this.#useSab = false;
+      }
+    } else {
+      this.#useSab = false;
+    }
+  }
 
   tryLock() {
-    if (Atomics.load(this.#shared, 0) !== 0) {
-      return false;
+    if (this.#useSab) {
+      if (Atomics.load(this.#shared, 0) !== 0) {
+        return false;
+      }
+      return Atomics.compareExchange(this.#shared, 0, 0, this.#counter++) == 0;
+    } else {
+      if (this.#locked) {
+        return false;
+      }
+      this.#locked = true;
+      return true;
     }
-    return Atomics.compareExchange(this.#shared, 0, 0, this.#counter++) == 0;
   }
 
   unlock() {
-    const load = Atomics.load(this.#shared, 0);
-    if (load === 0) {
-      throw new Error(`error: unlock of unlocked mutex: load=${load}`);
-    }
+    if (this.#useSab) {
+      const load = Atomics.load(this.#shared, 0);
+      if (load === 0) {
+        throw new Error(`error: unlock of unlocked mutex: load=${load}`);
+      }
 
-    const cas = Atomics.compareExchange(this.#shared, 0, load, 0);
-    if (cas != load) {
-      throw new Error(`error: mutex value changed in the middle of an unlock: load=${load}, cas=${cas}`);
+      const cas = Atomics.compareExchange(this.#shared, 0, load, 0);
+      if (cas != load) {
+        throw new Error(`error: mutex value changed in the middle of an unlock: load=${load}, cas=${cas}`);
+      }
+    } else {
+      if (!this.#locked) {
+        throw new Error(`error: unlock of unlocked mutex`);
+      }
+      this.#locked = false;
     }
   }
 }
