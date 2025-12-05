@@ -15,7 +15,7 @@
   "sideEffects": true,
   "dependencies": {
     "ts-proto": "^2.7.7",
-    "next": ">=14.2.32"
+    "next": "15.5.7"
   },
   "devDependencies": {
     "@types/node": "^24.2.1",
