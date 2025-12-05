@@ -21,7 +21,7 @@
     "@types/node": "^24.2.1",
     "esbuild": "0.25.9",
     "typescript": "5.9.2",
-    "undici-types": "7.13.0"
+    "undici-types": "7.16.0"
   },
   "repository": {
     "type": "git",
