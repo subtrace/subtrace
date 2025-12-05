@@ -4,7 +4,7 @@ go 1.24.2
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.34.0
-	github.com/andybalholm/brotli v1.1.1
+	github.com/andybalholm/brotli v1.2.0
 	github.com/google/cel-go v0.22.1
 	github.com/google/martian/v3 v3.3.3
 	github.com/google/uuid v1.6.0
