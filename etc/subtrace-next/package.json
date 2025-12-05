@@ -14,7 +14,7 @@
   ],
   "sideEffects": true,
   "dependencies": {
-    "ts-proto": "^2.7.7",
+    "ts-proto": "^2.8.3",
     "next": "15.5.7"
   },
   "devDependencies": {
