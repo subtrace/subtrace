@@ -5,7 +5,7 @@ go 1.24.2
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.34.0
 	github.com/andybalholm/brotli v1.1.1
-	github.com/google/cel-go v0.22.1
+	github.com/google/cel-go v0.26.1
 	github.com/google/martian/v3 v3.3.3
 	github.com/google/uuid v1.6.0
 	github.com/peterbourgon/ff/v3 v3.4.0
@@ -19,7 +19,7 @@ require (
 )
 
 require (
-	cel.dev/expr v0.18.0 // indirect
+	cel.dev/expr v0.24.0 // indirect
 	github.com/ClickHouse/ch-go v0.65.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
