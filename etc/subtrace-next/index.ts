@@ -328,7 +328,11 @@ function init(): void {
 
   SUBTRACE_TOKEN = process.env.SUBTRACE_TOKEN ?? "";
   if (!SUBTRACE_TOKEN) {
-    throw new Error("Missing SUBTRACE_TOKEN environment variable");
+    throw new Error(
+      "SUBTRACE_TOKEN is empty: subtrace needs this token to authenticate with the subtrace.dev backend. " +
+      "Set it in your .env file or environment variables. " +
+      "Get your token at https://subtrace.dev/dashboard/settings or refer to https://subtrace.dev/docs/env-vars for more information"
+    );
   }
 
   SUBTRACE_ENDPOINT = process.env.SUBTRACE_ENDPOINT ?? "https://subtrace.dev";

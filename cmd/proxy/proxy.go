@@ -129,7 +129,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 		}
 
 		if exists {
-			slog.Warn("subtrace proxy was started with -log=false but SUBTRACE_TOKEN is empty")
+			slog.Warn("subtrace proxy was started with -log=false but SUBTRACE_TOKEN is empty — set SUBTRACE_TOKEN in your .env file or environment variables to enable sending traces to subtrace.dev. Get your token at https://subtrace.dev/dashboard/settings")
 		}
 	}
 

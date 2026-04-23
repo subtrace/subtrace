@@ -79,7 +79,7 @@ func (c *Command) entrypoint(ctx context.Context, args []string) error {
 	}
 
 	if val := os.Getenv("SUBTRACE_TOKEN"); val == "" {
-		return fmt.Errorf("SUBTRACE_TOKEN is empty")
+		return fmt.Errorf("SUBTRACE_TOKEN is empty: subtrace needs this token to authenticate with the subtrace.dev backend. Set it in your .env file or environment variables. Get your token at https://subtrace.dev/dashboard/settings or refer to https://subtrace.dev/docs/env-vars for more information")
 	}
 
 	slog.Info("starting worker node", "release", version.Release, slog.Group("commit", "hash", version.CommitHash, "time", version.CommitTime), "build", version.BuildTime)
