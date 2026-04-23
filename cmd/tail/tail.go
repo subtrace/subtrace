@@ -86,7 +86,7 @@ func (t *Tail) entrypoint(ctx context.Context, args []string) error {
 	}
 
 	if os.Getenv("SUBTRACE_TOKEN") == "" {
-		fmt.Fprintf(os.Stderr, "subtrace: error: missing SUBTRACE_TOKEN")
+		fmt.Fprintf(os.Stderr, "subtrace: error: missing SUBTRACE_TOKEN — subtrace needs this token to authenticate with the subtrace.dev backend. Set it in your .env file or environment variables. Get your token at https://subtrace.dev/dashboard/settings or refer to https://subtrace.dev/docs/env-vars for more information\n")
 		os.Exit(1)
 		return nil
 	}
